@@ -16,6 +16,7 @@ use app\center\model\Product;
 use app\common\service\AuditLog;
 use app\common\service\IdentityService;
 use app\common\service\RoleService;
+use app\platform\model\DeviceDirectory;
 use app\platform\model\Tenant;
 use app\platform\mqtt\service\AccessService;
 use app\platform\mqtt\service\DebugService;
@@ -75,7 +76,7 @@ final class DeviceService
                         return ['device' => self::project($transaction, $existing->getId(), 'system'), 'credential' => null, 'replayed' => true];
                     }
                     // 全球稳定设备 ID 不因客户变化重复创建；跨客户只返回冲突，不暴露原归属。
-                    if ($transaction->table('center_device')->where('id', '=', $data['device_id'])->first() !== null
+                    if (DeviceDirectory::query()->master()->onConnection($transaction)->where('id', '=', $data['device_id'])->first() !== null
                         || $transaction->table('platform_mqtt_access_principal')->where('id', '=', $data['device_id'])->first() !== null) {
                         throw new HttpError(409, 'device_already_registered');
                     }
@@ -166,9 +167,11 @@ final class DeviceService
      */
     public function device(Connection $connection, Identity $identity, string $tenantId, string $deviceId, string $realm = 'system'): array
     {
-        return $this->run($connection, $identity, $tenantId, $realm, 'read', 'device.viewed', $deviceId, false, static function (Connection $transaction, Identity $current, array $context) use ($tenantId, $deviceId, $realm): array {
-            $query = $transaction->table('center_device')->where('id', '=', $deviceId);
-            if (($realm === 'system' ? $query->where('tenant_id', '=', $tenantId) : $query)->first() === null) {
+        return $this->run($connection, $identity, $tenantId, $realm, 'read', 'device.viewed', $deviceId, false, static function (Connection $transaction, Identity $current, array $context) use ($deviceId, $realm): array {
+            $query = $realm === 'system'
+                ? Device::query()->master()->onConnection($transaction)->where('id', '=', $deviceId)
+                : DeviceDirectory::query()->master()->onConnection($transaction)->where('id', '=', $deviceId);
+            if ($query->first() === null) {
                 throw new HttpError(404, 'device_not_found');
             }
             return self::project($transaction, $deviceId, $realm);
@@ -187,16 +190,16 @@ final class DeviceService
         if (!in_array($action, ['update', 'rotate', 'revoke', 'disable', 'enable', 'retire'], true)) {
             throw new HttpError(422, 'device_action_invalid');
         }
-        return $this->run($connection, $identity, $tenantId, $realm, $action, 'device.' . $action, $deviceId, true, static function (Connection $transaction, Identity $current, array $context) use ($tenantId, $deviceId, $action, $version, $confirmation, $realm, $data): array {
-            $lookup = $transaction->table('center_device')->where('id', '=', $deviceId);
-            if ($realm === 'system') {
-                $lookup = $lookup->where('tenant_id', '=', $tenantId);
-            }
+        return $this->run($connection, $identity, $tenantId, $realm, $action, 'device.' . $action, $deviceId, true, static function (Connection $transaction, Identity $current, array $context) use ($deviceId, $action, $version, $confirmation, $realm, $data): array {
             // 锁定读取得等待后真实版本，尤其不能沿用MySQL授权查询建立的旧快照。
-            $device = ($transaction->driverName() === 'sqlite' ? $lookup : $lookup->lockForUpdate())->first();
-            if ($device === null) {
+            $model = $realm === 'system'
+                ? Device::query()->master()->onConnection($transaction)->where('id', '=', $deviceId)
+                : DeviceDirectory::query()->master()->onConnection($transaction)->where('id', '=', $deviceId);
+            $deviceModel = ($transaction->driverName() === 'sqlite' ? $model : $model->lockForUpdate())->first();
+            if ($deviceModel === null) {
                 throw new HttpError(404, 'device_not_found');
             }
+            $device = $deviceModel->project(['id', 'tenant_id', 'product_id', 'ownership_id', 'name', 'lifecycle', 'version', 'transfer_id', 'transfer_frozen', 'recovery_verified']);
             if ((int)$device['recovery_verified'] !== 1) {
                 throw new HttpError(409, 'recovery_reconciliation_required');
             }
@@ -256,7 +259,18 @@ final class DeviceService
                     $changes['product_id'] = $data['product_id'];
                 }
             }
-            $lookup->update($changes);
+            if ($realm === 'system') {
+                $deviceModel->setLifecycle($lifecycle);
+                if ($action === 'update') {
+                    $deviceModel->setName($data['name']);
+                    if (array_key_exists('product_id', $data)) {
+                        $deviceModel->setProductId($data['product_id']);
+                    }
+                }
+                $deviceModel->dirty() === [] ? $deviceModel->touch() : $deviceModel->save();
+            } else {
+                $transaction->table('center_device')->where('id', '=', $deviceId)->where('version', '=', $version)->update($changes);
+            }
             $credential = null;
             if ($action === 'rotate') {
                 $credentialId = bin2hex(random_bytes(16));
@@ -355,7 +369,17 @@ final class DeviceService
                 RoleService::lockAuthorization();
                 $result = self::accessState($transaction, $request);
                 if ($result['allowed']) {
-                    $transaction->table('center_device_ownership')->where('device_id', '=', $request['client_id'])->whereNull('ended_at')->update(['access_started' => 1]);
+                    $device = DeviceDirectory::query()->master()->onConnection($transaction)->find($request['client_id']);
+                    if ($device !== null) {
+                        ExecutionScope::current()->run(static function () use ($transaction, $device): void {
+                            $ownership = DeviceOwnership::query()->master()->onConnection($transaction)->where('device_id', '=', $device->getId())
+                                ->whereNull('ended_at')->first();
+                            if ($ownership !== null && !$ownership->getAccessStarted()) {
+                                $ownership->setAccessStarted(true);
+                                $ownership->save();
+                            }
+                        }, ['tenant_id' => $device->getTenantId()]);
+                    }
                 }
                 return $result;
             }, $connection->driverName() === 'sqlite' && $connection->transactionDepth() === 0 ? 'immediate' : 'default');
@@ -487,6 +511,13 @@ final class DeviceService
             'protocol_version' => 5, 'tls_required' => true, 'keep_alive' => 30, 'session_expiry' => 86400, 'topics' => self::topics($device)];
     }
 
+    /** 协议热路径只生成受控的内部凭据投影，不把模型秘密字段送入公开响应。 */
+    private static function credentialRow(DeviceCredential $model): array
+    {
+        return ['id' => $model->getId(), 'device_id' => $model->getDeviceId(), 'ownership_id' => $model->getOwnershipId(),
+            'secret_hash' => $model->getSecretHash(), 'status' => $model->getStatus(), 'recovery_verified' => $model->getRecoveryVerified()];
+    }
+
     /** 仅由 access 在所需的身份写锁内调用；普通授权不改变关系期限或结束状态。 */
     private static function accessState(Connection $connection, array $request): array
     {
@@ -505,8 +536,9 @@ final class DeviceService
             if ($pending === []) {
                 return ['allowed' => true, 'invalidation' => null];
             }
-            $oldCredential = $connection->table('center_device_credential')->where('device_id', '=', $pending[0]['device_id'])
+            $oldCredentialModel = DeviceCredential::query()->master()->onConnection($connection)->where('device_id', '=', $pending[0]['device_id'])
                 ->where('id', '=', substr($pending[0]['principal'], 33))->first();
+            $oldCredential = $oldCredentialModel === null ? null : self::credentialRow($oldCredentialModel);
             if ($oldCredential === null || $pending[0]['principal'] !== $oldCredential['device_id'] . ':' . $oldCredential['id']) {
                 throw new \RuntimeException('device_invalidation_identity_missing');
             }
@@ -578,7 +610,8 @@ final class DeviceService
                 return ['allowed' => false];
             }
             $bound = AccessService::authenticateCertificate($connection, (string)$request['fingerprint']);
-            $device = $connection->table('center_device')->where('id', '=', $request['client_id'])->first();
+            $deviceModel = DeviceDirectory::query()->master()->onConnection($connection)->where('id', '=', $request['client_id'])->first();
+            $device = $deviceModel?->project(['id', 'tenant_id', 'ownership_id', 'lifecycle', 'recovery_verified', 'transfer_id']);
             $reason = 'invalid_certificate';
             $allowed = false;
             if ($bound !== null && $device !== null && $bound->principalId === $device['id']) {
@@ -592,7 +625,8 @@ final class DeviceService
                     $allowed = false;
                     $reason = 'device_ownership_unavailable';
                 }
-                if ($allowed && $connection->table('platform_tenant')->where('id', '=', $device['tenant_id'])->where('enabled', '=', 1)->first() === null) {
+                $tenant = Tenant::query()->master()->onConnection($connection)->find($device['tenant_id']);
+                if ($allowed && ($tenant === null || !$tenant->getEnabled())) {
                     $allowed = false;
                     $reason = 'tenant_unavailable';
                 }
@@ -622,8 +656,9 @@ final class DeviceService
         }
         $clientId = $request['client_id'];
         $username = $request['username'];
-        $device = preg_match('/^[a-f0-9]{32}$/D', $clientId) === 1
-            ? $connection->table('center_device')->where('id', '=', $clientId)->first() : null;
+        $deviceModel = preg_match('/^[a-f0-9]{32}$/D', $clientId) === 1
+            ? DeviceDirectory::query()->master()->onConnection($connection)->where('id', '=', $clientId)->first() : null;
+        $device = $deviceModel?->project(['id', 'tenant_id', 'ownership_id', 'lifecycle', 'recovery_verified', 'transfer_id']);
         if ($action === 'disconnected') {
             if ($device !== null) {
                 self::observeDevice($connection, $device, $request);
@@ -632,8 +667,9 @@ final class DeviceService
             }
             return ['allowed' => true];
         }
-        $credential = preg_match('/^[a-f0-9]{32}:[a-f0-9]{32}$/D', $username) === 1 && substr($username, 0, 32) === $clientId
-            ? $connection->table('center_device_credential')->where('device_id', '=', $clientId)->where('id', '=', substr($username, 33))->first() : null;
+        $credentialModel = preg_match('/^[a-f0-9]{32}:[a-f0-9]{32}$/D', $username) === 1 && substr($username, 0, 32) === $clientId
+            ? DeviceCredential::query()->master()->onConnection($connection)->where('device_id', '=', $clientId)->where('id', '=', substr($username, 33))->first() : null;
+        $credential = $credentialModel === null ? null : self::credentialRow($credentialModel);
         /** 后续授权可沿用握手留下的 mTLS 身份；口令身份仍要求当前活动凭据。 */
         $certificateIdentity = isset($request['access_identity']) && is_array($request['access_identity'])
             && ($request['access_identity']['authentication_method'] ?? '') === 'mtls'
@@ -675,7 +711,8 @@ final class DeviceService
             $allowed = false;
             $reason = 'device_ownership_unavailable';
         }
-        if ($allowed && $connection->table('platform_tenant')->where('id', '=', $device['tenant_id'])->where('enabled', '=', 1)->first() === null) {
+        $tenant = Tenant::query()->master()->onConnection($connection)->find($device['tenant_id']);
+        if ($allowed && ($tenant === null || !$tenant->getEnabled())) {
             $allowed = false;
             $reason = 'tenant_unavailable';
         }

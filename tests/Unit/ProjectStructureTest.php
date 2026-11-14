@@ -139,6 +139,12 @@ final class ProjectStructureTest extends TestCase
             'app/platform/controller/ImpersonationController.php',
             'app/system/controller/SystemController.php',
             'app/center/controller/ProductController.php',
+            'app/center/service/ApplicationGrantService.php',
+            'app/center/service/ClientApplicationService.php',
+            'app/center/service/DeviceService.php',
+            'app/center/service/RecoveryService.php',
+            'app/center/service/TransferService.php',
+            'app/center/service/DeviceAccess.php',
         ], $policy['files']);
         $sources = [];
         foreach ($policy['files'] as $file) {
@@ -169,6 +175,10 @@ final class ProjectStructureTest extends TestCase
         $directory = $models['app\platform\model\ApplicationDirectory'];
         self::assertSame('center_application', $directory['table']);
         self::assertNull($directory['tenant']);
+        $deviceDirectory = $models['app\platform\model\DeviceDirectory'];
+        self::assertSame('center_device', $deviceDirectory['table']);
+        self::assertNull($deviceDirectory['tenant']);
+        self::assertFalse($deviceDirectory['fields']['name']['fillable']);
 
         $documentation = (string)file_get_contents($root . '/docs/development/iot-identity.md');
         self::assertStringContainsString('角色与菜单的关联由 `RoleService`', $documentation);

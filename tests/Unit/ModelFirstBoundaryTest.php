@@ -102,6 +102,19 @@ PHP;
         self::assertStringStartsWith('invalid_exception: ', $guard->violations(['fixture.php' => $source], [array_replace($exception, ['reason' => ''])])[0]);
     }
 
+    /** 原子执行 SQL 也必须绑定具体方法和完整表达式，不能用宽泛的 execute 例外放行。 */
+    public function testExactExecuteExceptionIsSupported(): void
+    {
+        $source = '<?php namespace Demo; final class Service { public function observe(): void { $db->execute("UPDATE center_runtime_metric SET observed_at = ? WHERE node_id = ?"); } }';
+        $exception = ['owner' => 'Demo\Service::observe', 'method' => 'execute', 'argument' => '"UPDATE center_runtime_metric SET observed_at = ? WHERE node_id = ?"', 'reason' => '运行观察保持条件更新的 CAS 语义。'];
+        $guard = new ModelFirstBoundary();
+        self::assertSame([], $guard->violations(['fixture.php' => $source], [$exception]));
+        $violations = $guard->violations(['fixture.php' => str_replace('observed_at', 'run_id', $source)], [$exception]);
+        self::assertCount(2, $violations);
+        self::assertStringStartsWith('unapproved_database_call: ', $violations[0]);
+        self::assertStringStartsWith('unused_exception: ', $violations[1]);
+    }
+
     /** 基础设施连接参数的单一豁免不能扩为其他方法、参数名或可空类型。 */
     public function testInfrastructureParameterExceptionDoesNotPermitWiderSignatures(): void
     {

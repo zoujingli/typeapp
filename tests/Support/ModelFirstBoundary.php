@@ -29,7 +29,7 @@ final class ModelFirstBoundary
         $violations = [];
         $used = [];
         foreach ($exceptions as $index => $exception) {
-            if (!in_array($exception['method'], ['table', 'query', 'connection_parameter'], true) || trim($exception['reason']) === '') {
+            if (!in_array($exception['method'], ['table', 'query', 'execute', 'exec', 'prepare', 'raw', 'rawquery', 'connection_parameter'], true) || trim($exception['reason']) === '') {
                 $violations[] = 'invalid_exception: ' . $exception['owner'];
             }
             foreach (array_slice($exceptions, 0, $index) as $previous) {
@@ -103,17 +103,21 @@ final class ModelFirstBoundary
                             && !in_array(strtolower($call->class->toString()), ['type\orm\connection', 'type\orm\db', 'pdo'], true)) {
                             continue;
                         }
-                        if (!in_array($name, ['table', 'query', 'execute', 'exec', 'prepare', 'raw', 'rawquery'], true)
-                            || ($name === 'query' && $call->args === [])) {
+                        if (!in_array($name, ['table', 'query', 'execute', 'exec', 'prepare', 'raw', 'rawquery'], true)) {
                             continue;
                         }
                         $argument = $call->args[0]->value ?? null;
-                        if (!in_array($name, ['table', 'query'], true) || $argument === null
-                            || ($name === 'query' && !$argument instanceof Node\Scalar\String_)) {
+                        if ($argument === null) {
                             $violations[] = 'unapproved_database_call: ' . $location . ' ' . $name;
                             continue;
                         }
-                        $value = $name === 'query' ? $argument->value : $printer->prettyPrintExpr($argument);
+                        $value = $name === 'query' && $argument instanceof Node\Scalar\String_ ? $argument->value : $printer->prettyPrintExpr($argument);
+                        foreach ($exceptions as $index => $exception) {
+                            if ($exception['owner'] === $owner && $exception['method'] === $name && $exception['argument'] === $value) {
+                                $used[$index] = true;
+                                continue 2;
+                            }
+                        }
                         if ($name === 'query' && (preg_match('/^SELECT\s.+\sJOIN\s/is', $value) !== 1 || str_contains($value, ';'))) {
                             $violations[] = 'unapproved_database_call: ' . $location . ' 固定 SQL 仅允许单条跨模型只读投影';
                             continue;

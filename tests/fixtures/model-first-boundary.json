@@ -17,7 +17,13 @@
         "app/platform/controller/MenuController.php",
         "app/platform/controller/ImpersonationController.php",
         "app/system/controller/SystemController.php",
-        "app/center/controller/ProductController.php"
+        "app/center/controller/ProductController.php",
+        "app/center/service/ApplicationGrantService.php",
+        "app/center/service/ClientApplicationService.php",
+        "app/center/service/DeviceService.php",
+        "app/center/service/RecoveryService.php",
+        "app/center/service/TransferService.php",
+        "app/center/service/DeviceAccess.php"
     ],
     "exceptions": [
         {
@@ -37,6 +43,432 @@
             "method": "connection_parameter",
             "argument": "$connection: Type\\Orm\\Connection",
             "reason": "客户设备观察复用当前请求连接，设备投影由 DeviceService 管理。"
+        },
+        {
+            "owner": "app\\center\\service\\ApplicationGrantService::save",
+            "method": "table",
+            "argument": "'platform_mqtt_access_grant'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\ApplicationGrantService::allows",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\ApplicationGrantService::allows",
+            "method": "table",
+            "argument": "'center_application_grant'",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\ApplicationGrantService::allows",
+            "method": "table",
+            "argument": "'center_device'",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\ClientApplicationService::create",
+            "method": "table",
+            "argument": "'platform_mqtt_access_principal'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\ClientApplicationService::create",
+            "method": "table",
+            "argument": "'platform_mqtt_access_credential'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\ClientApplicationService::change",
+            "method": "table",
+            "argument": "'platform_mqtt_access_credential'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\ClientApplicationService::change",
+            "method": "table",
+            "argument": "'platform_mqtt_access_principal'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\ClientApplicationService::access",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\ClientApplicationService::accessCurrent",
+            "method": "table",
+            "argument": "'platform_mqtt_access_credential'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\ClientApplicationService::accessCurrent",
+            "method": "table",
+            "argument": "'platform_mqtt_access_principal'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\ClientApplicationService::project",
+            "method": "table",
+            "argument": "'platform_mqtt_access_credential'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\ClientApplicationService::project",
+            "method": "table",
+            "argument": "'platform_mqtt_access_revision'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::enroll",
+            "method": "table",
+            "argument": "'platform_mqtt_access_principal'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::devices",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::observations",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::device",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::change",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::change",
+            "method": "table",
+            "argument": "'center_device'",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::invalidateCredential",
+            "method": "connection_parameter",
+            "argument": "$transaction: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::transferCredential",
+            "method": "connection_parameter",
+            "argument": "$transaction: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::access",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::observation",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::run",
+            "method": "table",
+            "argument": "'system_user'",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::accessState",
+            "method": "query",
+            "argument": "SELECT id, device_id, principal, actor_id FROM center_authorization_invalidation WHERE completed_at IS NULL ORDER BY requested_at, id LIMIT 1",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::accessState",
+            "method": "table",
+            "argument": "'platform_mqtt_access_invalidation'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::accessState",
+            "method": "table",
+            "argument": "'center_authorization_invalidation'",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::observedQuery",
+            "method": "table",
+            "argument": "'center_device'",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::observeBroker",
+            "method": "execute",
+            "argument": "'INSERT INTO center_broker_observation (node_id, run_id, observed_at, expires_at) VALUES (?, ?, ?, ?)' . ' ON CONFLICT (node_id) DO UPDATE SET run_id = EXCLUDED.run_id, observed_at = EXCLUDED.observed_at, expires_at = EXCLUDED.expires_at'",
+            "reason": "运行观察与在线状态是跨模型原子投影，保留同一事务中的条件更新语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::observeBroker",
+            "method": "execute",
+            "argument": "'UPDATE center_broker_observation SET observed_at = ?, expires_at = ? WHERE node_id = ? AND run_id = ?'",
+            "reason": "运行观察与在线状态是跨模型原子投影，保留同一事务中的条件更新语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::observeDevice",
+            "method": "query",
+            "argument": "SELECT enabled FROM platform_tenant WHERE id = ? FOR SHARE",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::observeDevice",
+            "method": "query",
+            "argument": "SELECT lifecycle, ownership_id FROM center_device WHERE id = ? AND recovery_verified = 1 FOR UPDATE",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::observeDevice",
+            "method": "query",
+            "argument": "SELECT id FROM center_device_credential WHERE id = ? AND device_id = ? AND ownership_id = ? AND status = 'active' AND recovery_verified = 1 FOR UPDATE",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::observeDevice",
+            "method": "execute",
+            "argument": "\"UPDATE center_device_connection SET status = 'online', owner_id = ?, node_id = ?, run_id = ?, observed_at = ? WHERE device_id = ? AND ownership_id = ?\" . ' AND EXISTS (SELECT 1 FROM center_broker_observation WHERE node_id = ? AND run_id = ? AND expires_at > ?)'",
+            "reason": "运行观察与在线状态是跨模型原子投影，保留同一事务中的条件更新语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::observeDevice",
+            "method": "execute",
+            "argument": "\"UPDATE center_device_connection SET status = 'offline', observed_at = ? WHERE device_id = ? AND owner_id = ? AND run_id = ? AND status = 'online'\"",
+            "reason": "运行观察与在线状态是跨模型原子投影，保留同一事务中的条件更新语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceService::observeDevice",
+            "method": "execute",
+            "argument": "\"UPDATE center_device SET lifecycle = 'enabled', version = version + 1, updated_at = ? WHERE id = ? AND ownership_id = ? AND lifecycle = 'inactive'\"",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::snapshot",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::begin",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::isolate",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::isolate",
+            "method": "table",
+            "argument": "$subjects",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::review",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::review",
+            "method": "table",
+            "argument": "$subjects",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::restore",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::restore",
+            "method": "table",
+            "argument": "'center_recovery_subject'",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::restore",
+            "method": "table",
+            "argument": "$table",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::ready",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::status",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::status",
+            "method": "table",
+            "argument": "'center_recovery_subject'",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::fenceStaleMqttNodes",
+            "method": "query",
+            "argument": "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::fenceStaleMqttNodes",
+            "method": "execute",
+            "argument": "\"UPDATE type_mqtt_nodes SET state = 'fenced', actor = 'recovery', proof_ref = 'recovery_restore_source_stopped', updated_at = clock_timestamp() WHERE state = 'active'\"",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::batch",
+            "method": "table",
+            "argument": "self::table($kind)",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::isolateRow",
+            "method": "table",
+            "argument": "self::table($kind)",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::isolateRow",
+            "method": "table",
+            "argument": "'center_device_connection'",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::currentRow",
+            "method": "table",
+            "argument": "\\app\\platform\\mqtt\\service\\RecoveryCatalog::table($kind)",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::currentRow",
+            "method": "table",
+            "argument": "self::table($kind)",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::restoreRow",
+            "method": "table",
+            "argument": "self::table($kind)",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::fingerprint",
+            "method": "table",
+            "argument": "'platform_tenant'",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::fingerprint",
+            "method": "table",
+            "argument": "$realm . '_role_permission'",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::fingerprint",
+            "method": "table",
+            "argument": "$realm . '_menu'",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\RecoveryService::fingerprint",
+            "method": "table",
+            "argument": "$realm . '_user_role'",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\TransferService::ownershipCurrent",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\TransferService::expireOwnership",
+            "method": "connection_parameter",
+            "argument": "$connection: Type\\Orm\\Connection",
+            "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
+        },
+        {
+            "owner": "app\\center\\service\\TransferService::expireOwnership",
+            "method": "query",
+            "argument": "'SELECT d.* FROM center_device_ownership o JOIN center_device d ON d.ownership_id = o.id' . ' WHERE o.ended_at IS NULL AND o.expires_at <= ? AND d.transfer_id IS NULL AND d.recovery_verified = 1 ORDER BY o.expires_at, o.id LIMIT 1'",
+            "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
+        },
+        {
+            "owner": "app\\center\\service\\TransferService::advanceRelationship",
+            "method": "table",
+            "argument": "'platform_mqtt_connection_operation'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\TransferService::acceptRelationship",
+            "method": "table",
+            "argument": "'center_device'",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\TransferService::beginRelationship",
+            "method": "table",
+            "argument": "'center_authorization_invalidation'",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\TransferService::beginRelationship",
+            "method": "table",
+            "argument": "'platform_mqtt_access_principal'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\TransferService::beginRelationship",
+            "method": "table",
+            "argument": "'platform_mqtt_access_grant'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\TransferService::relationshipIsolated",
+            "method": "table",
+            "argument": "'center_authorization_invalidation'",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\TransferService::relationshipIsolated",
+            "method": "table",
+            "argument": "'platform_mqtt_access_revision'",
+            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
+        },
+        {
+            "owner": "app\\center\\service\\DeviceAccess::executeWorkerRequest",
+            "method": "rawquery",
+            "argument": "\"SELECT set_config('application_name', ?, false), set_config('statement_timeout', '1000', false), \" . \"set_config('lock_timeout', '500', false), set_config('idle_in_transaction_session_timeout', '1000', false), \" . \"set_config('synchronous_commit', 'remote_apply', false)\"",
+            "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
         }
     ]
 }

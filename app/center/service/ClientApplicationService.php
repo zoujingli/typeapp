@@ -9,6 +9,7 @@ use app\common\service\AuditLog;
 use app\common\service\IdentityService;
 use app\common\service\RoleService;
 use app\platform\model\ApplicationDirectory;
+use app\platform\model\DeviceDirectory;
 use app\platform\model\Tenant;
 use app\platform\mqtt\service\AccessService;
 use app\platform\mqtt\service\ResourceObservations;
@@ -91,7 +92,7 @@ final class ClientApplicationService
             $connection = Db::connection('default', true);
             // 协议身份共享主体索引；即使用户名分域，也不能复用另一设备的主体 ID。
             if ($connection->table('platform_mqtt_access_principal')->where('id', '=', $data['id'])->first() !== null
-                || $connection->table('center_device')->where('id', '=', $data['id'])->first() !== null) {
+                || DeviceDirectory::query()->master()->onConnection($connection)->where('id', '=', $data['id'])->first() !== null) {
                 throw new HttpError(409, 'application_request_conflict');
             }
             $version = AccessService::currentVersion($connection);
@@ -226,7 +227,9 @@ final class ClientApplicationService
         $username = (string)($request['username'] ?? '');
         $id = preg_match('/^app:[a-f0-9]{32}$/D', $username) === 1 ? substr($username, 4) : '';
         // MQTT 认证热路径只接收受控 Connection，固定投影不能把活动模型跨 worker 传递。
-        $row = $id === '' ? null : $connection->table('center_application')->where('id', '=', $id)->first();
+        $application = $id === '' ? null : ApplicationDirectory::query()->master()->onConnection($connection)->find($id);
+        $row = $application === null ? null : $application->project(['id', 'tenant_id', 'name', 'enabled', 'key_version', 'access_version', 'access_started', 'recovery_verified'])
+            + ['credential_id' => $application->getCredentialId()];
         $credential = $row === null ? null : $connection->table('platform_mqtt_access_credential')->where('id', '=', $row['credential_id'])->where('principal_id', '=', $id)->first();
         $principal = $row === null ? null : $connection->table('platform_mqtt_access_principal')->where('id', '=', $id)->where('tenant_id', '=', $row['tenant_id'])->first();
         if ($request['action'] === 'connected') {
@@ -246,14 +249,21 @@ final class ClientApplicationService
             && (int)$row['enabled'] === 1 && (int)$row['recovery_verified'] === 1 && (int)$principal['enabled'] === 1
             && (int)$principal['recovery_verified'] === 1 && (int)$credential['recovery_verified'] === 1
             && $credential['status'] === 'active' && $credential['login'] === $username && (int)$credential['credential_version'] === (int)$row['key_version']
-            && $connection->table('platform_tenant')->where('id', '=', $row['tenant_id'])->where('enabled', '=', 1)->first() !== null;
+            && (($tenant = Tenant::query()->master()->onConnection($connection)->find($row['tenant_id'])) !== null && $tenant->getEnabled());
         $identity = $allowed ? new AccessIdentity($id, $credential['id'], (int)$row['key_version']) : null;
         if ($allowed && $request['action'] === 'authenticate') {
             $allowed = hash_equals($credential['secret_hash'], (string)$request['verifier']) && $request['secure'] && $request['protocol'] === 5
                 && $request['keep_alive'] === 30 && $request['expiry'] === 86400;
             if ($allowed && (int)$row['access_started'] !== 1) {
                 // 认证事实不是业务编辑，不推进表单版本；它在发出身份结论前持久保存。
-                $connection->table('center_application')->where('id', '=', $id)->update(['access_started' => 1]);
+                ExecutionScope::current()->run(static function () use ($connection, $id): void {
+                    $model = ClientApplication::query()->master()->onConnection($connection)->find($id);
+                    if ($model === null) {
+                        throw new \RuntimeException('application_access_identity_missing');
+                    }
+                    $model->setAccessStarted(true);
+                    $model->save();
+                }, ['tenant_id' => (string)$row['tenant_id']]);
             }
         } elseif ($allowed) {
             $allowed = isset($request['access_identity']) && is_array($request['access_identity'])

@@ -52,7 +52,7 @@ $member->save();
 
 物联中心当前 `main` 已将平台与 Tenant 站点设置、Center 分类资料加入这一入口：`SiteSettings::publicView()/managementView()/update()` 与产品服务的人工作业接口不再接收连接。站点读取使用主库，公共 HTTP 入口仍先检查应用安装身份；分类在重新认证、授权后绑定 Tenant，写入与审计复用授权事务。两类表单即使保存相同内容也推进版本：存在更新时间等脏字段时执行 `save()`，没有脏字段时显式 `touch()`。普通 Model 的无变更 `save()` 仍返回 `unchanged`。
 
-Center 分类的版本由 `Product` Model 管理，不能通过客户端赋值或公开投影伪造；设备、接入应用和转配分别使用各自的 Model 与业务 Service。MQTT 运行观察的管理投影和恢复操作的单主键进度使用 `CenterRuntimeMetric`、`CenterRecovery` Model；恢复主体复合身份、协议状态和跨 Tenant 资产汇总保持明确的基础设施查询边界，不能据此宣称普通 Center CRUD 可以直接访问数据表。
+Center 分类的版本由 `Product` Model 管理，不能通过客户端赋值或公开投影伪造；设备、接入应用和转配分别使用各自的 Model 与业务 Service。Platform 或受控协议入口需要跨 Tenant 读取设备时使用只读 `DeviceDirectory`，客户内写入继续使用带 Tenant 范围的 `Device`；MQTT 运行观察的管理投影和恢复操作的单主键进度使用 `CenterRuntimeMetric`、`CenterRecovery` Model。恢复主体复合身份、协议状态和跨 Tenant 资产汇总保持明确的基础设施查询边界，不能据此宣称普通 Center CRUD 可以直接访问数据表。
 
 ## 静态筛选助手
 

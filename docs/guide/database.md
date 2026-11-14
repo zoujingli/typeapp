@@ -223,11 +223,13 @@ flowchart LR
 | 场景 | 保留原因 |
 | --- | --- |
 | 迁移、安装种子与就绪探测 | 模型操作以真实表结构及完成安装为前提 |
-| Platform 跨 Tenant 目录、授权关联、审计与 Outbox | 需要受控跨模型投影、授权锁或与业务同事务落库；可用不带 `tenantKey` 的只读目录 Model，写入仍回到带 Tenant 范围的领域 Model |
+| Platform 跨 Tenant 目录、授权关联、审计与 Outbox | 需要受控跨模型投影、授权锁或与业务同事务落库；使用 `ApplicationDirectory`、`DeviceDirectory` 等不带 `tenantKey` 的只读目录 Model，写入仍回到带 Tenant 范围的领域 Model |
 | 旧安装保全与分批转换 | 核对历史复合身份、原件摘要及升级游标，不能用当前模型覆盖旧数据 |
 | 设备运行观测与协议持久状态 | `CenterRuntimeMetric::recordObservation()` 封装 PostgreSQL 64 槽位和运行代次 CAS；`CenterRecovery` 负责恢复操作的单主键进度状态；协议持久状态保留原子状态转换、幂等约束及集合 SQL，避免逐行加载改变语义或性能 |
 
 这些例外不授予普通 CRUD 绕过模型的权利。`CenterRuntimeMetric` 的普通读取通过 ModelQuery，只有 `recordObservation()` 内的两条原子 SQL 属于已登记的运行观察例外；`CenterRecovery` 的状态读取、创建和推进通过 ModelQuery，`center_recovery_subject` 因 `(recovery_id, kind, subject_id)` 复合主键超出当前单主键 ORM 能力，继续由 `RecoveryService` 在固定白名单内执行受控查询，不能用任一列冒充主键；审计动态联合查询、恢复游标和 MQTT 协议表也必须按具体方法登记。后续迁移先验证真实事务和租户边界，再扩大覆盖范围。
+
+当前 Center 设备、应用、转配、恢复和协议接入服务均纳入同一 Model-first 静态门禁；每个保留的表、查询或原子执行入口都绑定到完整方法及表达式，删除或改写调用后对应登记会立即报未使用。普通设备目录通过 `DeviceDirectory` 只读模型读取，跨模型投影和协议热路径只有在无法保持原子语义时才保留受控底层入口。
 
 ## 字段与修改
 

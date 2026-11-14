@@ -14,6 +14,7 @@ use app\center\model\DeviceReassignment;
 use app\common\service\AuditLog;
 use app\common\service\IdentityService;
 use app\common\service\RoleService;
+use app\platform\model\DeviceDirectory;
 use app\platform\model\Tenant;
 use app\platform\mqtt\service\AccessService;
 use app\platform\mqtt\service\ConnectionOperations;
@@ -482,8 +483,9 @@ final class TransferService
 
     private static function lockedDevice(Connection $connection, string $id): ?array
     {
-        $query = $connection->table('center_device')->where('id', '=', $id)->where('recovery_verified', '=', 1);
-        return ($connection->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
+        $query = DeviceDirectory::query()->master()->onConnection($connection)->where('id', '=', $id)->where('recovery_verified', '=', true);
+        $device = ($connection->driverName() === 'sqlite' ? $query : $query->lockForUpdate())->first();
+        return $device?->toArray();
     }
 
     private static function version(array $device, int $version): void
