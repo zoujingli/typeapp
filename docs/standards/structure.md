@@ -49,7 +49,7 @@ build/                        生成源码、平台产物、报告与开发数�
 
 ## 应用数据表命名
 
-业务表采用 `<模块>_<单数业务名>`：平台为 `platform_*`，客户系统为 `system_*`，物联中心为 `center_*`；归 Platform 的 MQTT 运维表使用 `platform_mqtt_*`。关联表同样采用模块前缀和单数名，例如 `system_user_role`、`system_role_permission`。模型声明、SQL、外键、索引及验证入口使用同一名称，不保留旧表别名或自动数据转换分支。
+业务表采用 `<模块>_<单数业务名>`：平台为 `platform_*`，客户系统为 `system_*`，物联中心为 `center_*`；归 Platform 的 MQTT 运维表使用 `platform_mqtt_*`，归 System 的 MQTT 管理记录使用 `system_mqtt_*`。模型属性模块与表前缀保持唯一对应：`platform`、`system`、`center`、`platform.mqtt`、`system.mqtt` 分别落到对应模型目录；跨模块的 Platform 目录模型必须显式作为只读投影保留。关联表同样采用模块前缀和单数名，例如 `system_user_role`、`system_role_permission`。模型声明、SQL、外键、索引及验证入口使用同一名称，不保留旧表别名或自动数据转换分支。
 
 `platform_menu` 与 `system_menu` 分别保存平台目录和所有 Tenant 共用的子系统目录，均由 Platform 维护。角色权限外键只能引用所属目录。System 账号、角色、关联、会话及业务记录绑定可信 `tenant_id`；共享子系统菜单不属于单个 Tenant。框架组件自有表继续由组件管理其前缀与契约，不混入应用模块。
 

@@ -22,6 +22,7 @@ final class MigrationModelGeneratorTest extends TestCase
     {
         $root = dirname(__DIR__, 2);
         $location = MigrationModelGenerator::locate($root, 'system_mqtt_operation');
+        self::assertSame('system.mqtt', $location['module']);
         self::assertSame('app\\system\\model\\MqttOperation', $location['class']);
         self::assertSame($root . '/app/system/model/MqttOperation.php', $location['path']);
 
@@ -33,6 +34,9 @@ final class MigrationModelGeneratorTest extends TestCase
         ] as $table => $class) {
             self::assertSame($class, MigrationModelGenerator::locate($root, $table)['class']);
         }
+        self::assertSame('platform', MigrationModelGenerator::module('platform_tenant'));
+        self::assertSame('center', MigrationModelGenerator::module('center_device'));
+        self::assertNull(MigrationModelGenerator::module('external_table'));
     }
 
     public function testMigrationBlueprintsRenderCommentedModels(): void

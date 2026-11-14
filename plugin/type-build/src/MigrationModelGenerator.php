@@ -12,6 +12,19 @@ namespace Type\Build;
 final class MigrationModelGenerator
 {
     /**
+     * 业务表前缀与模型属性模块的唯一映射；最长前缀必须优先匹配。
+     *
+     * @var list<array{prefix:string,module:string,namespace:string,directory:string,classPrefix:string}>
+     */
+    private const TABLE_MODULES = [
+        ['prefix' => 'platform_mqtt_', 'module' => 'platform.mqtt', 'namespace' => 'app\\platform\\mqtt\\model\\', 'directory' => 'app/platform/mqtt/model/', 'classPrefix' => ''],
+        ['prefix' => 'system_mqtt_', 'module' => 'system.mqtt', 'namespace' => 'app\\system\\model\\', 'directory' => 'app/system/model/', 'classPrefix' => 'Mqtt'],
+        ['prefix' => 'platform_', 'module' => 'platform', 'namespace' => 'app\\platform\\model\\', 'directory' => 'app/platform/model/', 'classPrefix' => ''],
+        ['prefix' => 'system_', 'module' => 'system', 'namespace' => 'app\\system\\model\\', 'directory' => 'app/system/model/', 'classPrefix' => ''],
+        ['prefix' => 'center_', 'module' => 'center', 'namespace' => 'app\\center\\model\\', 'directory' => 'app/center/model/', 'classPrefix' => ''],
+    ];
+
+    /**
      * @param list<array{table: string, comment: string, columns: list<array<string, mixed>>}> $structures
      * @param array<string, true> $occupied 已经有模型的表
      * @return array{files: list<array{table: string, path: string, code: string}>, skipped: array<string, string>}
@@ -73,27 +86,29 @@ final class MigrationModelGenerator
     /**
      * Platform、System、Center 与 MQTT 表落到现有模型命名空间。
      *
-     * @return array{class: string, path: string}|null
+     * @return array{module:string,class:string,path:string}|null
      */
     public static function locate(string $root, string $table): ?array
     {
         $root = rtrim($root, '/');
-        $rules = [
-            'platform_mqtt_' => ['app\\platform\\mqtt\\model\\', $root . '/app/platform/mqtt/model/'],
-            'system_mqtt_' => ['app\\system\\model\\', $root . '/app/system/model/'],
-            'platform_' => ['app\\platform\\model\\', $root . '/app/platform/model/'],
-            'system_' => ['app\\system\\model\\', $root . '/app/system/model/'],
-            'center_' => ['app\\center\\model\\', $root . '/app/center/model/'],
-        ];
-        foreach ($rules as $prefix => [$namespace, $directory]) {
-            if (!str_starts_with($table, $prefix)) {
+        foreach (self::TABLE_MODULES as $rule) {
+            if (!str_starts_with($table, $rule['prefix'])) {
                 continue;
             }
-            $class = self::studly(substr($table, strlen($prefix)));
-            if ($prefix === 'system_mqtt_') {
-                $class = 'Mqtt' . $class;
+            $class = $rule['classPrefix'] . self::studly(substr($table, strlen($rule['prefix'])));
+            return ['module' => $rule['module'], 'class' => $rule['namespace'] . $class,
+                'path' => $root . '/' . $rule['directory'] . $class . '.php'];
+        }
+        return null;
+    }
+
+    /** 返回表前缀对应的属性模块，未知业务表不猜测归属。 */
+    public static function module(string $table): ?string
+    {
+        foreach (self::TABLE_MODULES as $rule) {
+            if (str_starts_with($table, $rule['prefix'])) {
+                return $rule['module'];
             }
-            return ['class' => $namespace . $class, 'path' => $directory . $class . '.php'];
         }
         return null;
     }
