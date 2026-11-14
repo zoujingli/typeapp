@@ -11,7 +11,10 @@ import { Alert, Button, Space, message } from 'ant-design-vue';
 import { errorText, isDemo, logout, session, sessionExitPath } from '../api/identity';
 import { lockScreen, verifyScreenPassword } from '../screen-lock';
 const router = useRouter(); const route = useRoute(); const access = useAccessStore(); const leaving = ref(false);
-const userMenus = computed(() => [{ text: '个人中心', icon: 'lucide:user', handler: () => router.push(`/${session.realm}/profile`) }]);
+const userMenus = computed(() => [
+  { text: '工作台', icon: 'lucide:layout-dashboard', handler: () => router.push(`/${session.realm}/overview`) },
+  { text: '个人中心', icon: 'lucide:user', handler: () => router.push(`/${session.realm}/profile`) },
+]);
 const searchKey = computed(() => `typeapp.search.${session.realm}.${session.tenant?.id || 'platform'}.${session.user?.id || 'anonymous'}.${session.impersonating ? session.identity?.actor_id : 'self'}`);
 const searchMenus = computed(() => {
   const leaves = (menus: Menu[]): Menu[] => menus.flatMap(menu => menu.children?.length ? leaves(menu.children) : [menu]);

@@ -2,13 +2,14 @@
 import type { ConfigurationField, ConfigurationView } from '../../api/platform';
 import type { VbenFormSchema } from '../../adapter/form';
 import { computed, onMounted, ref } from 'vue';
-import { Alert, Button, Card, Empty, Space, Spin, message } from 'ant-design-vue';
+import { Alert, Button, Card, Empty, Space, Spin, TabPane, Tabs, message } from 'ant-design-vue';
 import { Page } from '@vben/common-ui';
 import { useVbenForm } from '../../adapter/form';
 import { ApiError, applyAccessContext, errorText, isCanceled, isDemo, request, session } from '../../api/identity';
-const view = ref<ConfigurationView>(); const loading = ref(false); const saving = ref(false); const failure = ref(''); const pendingRestart = ref(false); const conflicted = ref(false);
+const view = ref<ConfigurationView>(); const loading = ref(false); const saving = ref(false); const failure = ref(''); const pendingRestart = ref(false); const conflicted = ref(false); const activeGroup = ref('');
 const canManage = computed(() => session.permissions.includes('platform.config.manage') && !isDemo());
-const [Form, form] = useVbenForm({ showDefaultActions: false, layout: 'vertical', commonConfig: { componentProps: { class: 'w-full' } }, wrapperClass: 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3' });
+const groupClass = (group: string, extra = '') => () => activeGroup.value === group ? extra : 'hidden';
+const [Form, form] = useVbenForm({ showDefaultActions: false, layout: 'vertical', commonConfig: { labelWidth: 180, componentProps: { class: 'w-full' } }, wrapperClass: 'grid-cols-1' });
 const editable = (field: ConfigurationField) => canManage.value && field.editable && !field.read_only && !field.secret;
 function hint(field: ConfigurationField) {
   const source = { process: '进程环境', file: '运行文件', default: '默认值', unknown: '未知来源' }[field.source];
@@ -19,9 +20,10 @@ async function load() {
   loading.value = true; failure.value = '';
   try {
     const data = await request<ConfigurationView>('/platform/configuration'); view.value = data; applyAccessContext(data); conflicted.value = false;
+    const groups = [...new Set(data.fields.map(field => field.group))]; activeGroup.value = groups.includes(activeGroup.value) ? activeGroup.value : groups[0] || '';
     const schema: VbenFormSchema[] = Object.entries(Object.groupBy(data.fields, field => field.group)).flatMap(([group, fields], index) => [
-      { fieldName: `_section_${index}`, component: 'Divider', hideLabel: true, formItemClass: 'col-span-full', componentProps: { orientation: 'left', plain: true, class: 'my-0' }, renderComponentContent: () => ({ default: () => group }) },
-      ...fields!.map((field): VbenFormSchema => ({ fieldName: field.key, label: field.label, help: hint(field),
+      { fieldName: `_section_${index}`, component: 'Divider', hideLabel: true, formItemClass: groupClass(group, 'col-span-full'), componentProps: { orientation: 'left', plain: true, class: 'my-0' }, renderComponentContent: () => ({ default: () => group }) },
+      ...fields!.map((field): VbenFormSchema => ({ fieldName: field.key, label: field.label, help: hint(field), formItemClass: groupClass(group),
       component: field.type === 'enum' ? 'Select' : field.type === 'integer' ? 'InputNumber' : field.type === 'boolean' ? 'Switch' : 'Input',
       componentProps: { class: field.type === 'boolean' ? 'w-auto' : 'w-full', disabled: !editable(field), ...(field.options ? { options: field.options.map(value => ({ value, label: value })) } : {}), maxlength: 4096 },
     })),
@@ -47,9 +49,12 @@ async function save() {
 onMounted(load);
 </script>
 <template>
-  <Page title="运行配置" description="查看配置来源并维护非敏感启动参数。" header-class="flex-wrap gap-4">
+  <Page auto-content-height title="运行配置" description="查看配置来源并维护非敏感启动参数。" header-class="flex-wrap gap-4">
     <template #extra><Space><Button :loading="loading" :disabled="saving" @click="load">刷新</Button><Button v-if="canManage" type="primary" :loading="saving" :disabled="!view || loading || conflicted" @click="save">保存配置</Button></Space></template>
     <Alert v-if="pendingRestart || view?.restart_required" type="warning" class="mb-4" message="配置已写入，重启后生效；当前进程不会热加载。" show-icon /><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon />
+    <Tabs v-if="view?.fields.length" v-model:active-key="activeGroup" class="mb-4 rounded-md bg-card px-4">
+      <TabPane v-for="group in [...new Set(view.fields.map(field => field.group))]" :key="group" :tab="group" />
+    </Tabs>
     <Spin :spinning="loading"><Card :bordered="false"><Form v-if="view" :common-config="{ disabled: loading || saving, componentProps: { class: 'w-full' } }" /><Empty v-else-if="!loading" description="暂无可读取的运行配置"><Button @click="load">重新读取</Button></Empty></Card></Spin><Alert v-if="view?.undeclared.length" type="info" class="mt-4" message="以下配置键未纳入网页管理，不会读取或修改其值" :description="view.undeclared.join('、')" show-icon />
   </Page>
 </template>

@@ -62,7 +62,7 @@ async function submit(values: Record<string, unknown>) {
   try {
     await login(String(values.username).trim(), String(values.password), realm.value);
     form.value?.getFormApi().setFieldValue('password', '');
-    if (realm.value === 'platform' || entryContext.bound) await router.replace(`/${realm.value}/profile`);
+    if (realm.value === 'platform' || entryContext.bound) await router.replace(`/${realm.value}/overview`);
   } catch (error) { if (!isCanceled(error)) failure.value = errorText(error); }
   finally { busy.value = false; }
 }

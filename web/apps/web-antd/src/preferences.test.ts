@@ -39,8 +39,8 @@ it('个人差量按 Tenant、账号和操作者隔离，未覆盖字段跟随最
     expect(preferences.app.name).toBe(site.name);
     expect(preferences.copyright.companyName).toBe(site.name);
     expect(preferences.app.timezone).toBe(site.timezone);
-    expect(preferences.widget.languageToggle).toBe(false);
-    expect(preferences.widget.notification).toBe(false);
+    expect(preferences.widget.languageToggle).toBe(true);
+    expect(preferences.widget.notification).toBe(true);
     await resetPreferences();
     expect(preferences.theme.mode).toBe('light');
     expect(entries.has('typeapp.preferences.system.tenant-a.user-a.self')).toBe(false);

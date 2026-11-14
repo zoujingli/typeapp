@@ -6,7 +6,7 @@ import { watch } from 'vue';
 type PreferencePatch = { [K in keyof Preferences]?: Partial<Preferences[K]> };
 type JsonRecord = Record<string, unknown>;
 let activeScope = 'anonymous';
-let activeHomePath = '/system/profile';
+let activeHomePath = '/system/overview';
 let defaults: PreferencePatch = {};
 let baseline: JsonRecord = {};
 let started = false;
@@ -14,12 +14,12 @@ let switching = false;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const cacheKey = () => `typeapp.preferences.${activeScope}`;
 
-/** 品牌与身份由当前端管理；语言、通知在具备完整业务支持后开放。 */
+/** 品牌与身份由当前端管理；工具栏行为由 Vben 原生组件负责。 */
 export function isPersonalPreference(path: string): boolean {
   const [section, field] = path.split('.');
   if (!section || !field) return false;
   if (section === 'app') return ['layout', 'timezone', 'colorWeakMode', 'colorGrayMode', 'contentCompact', 'contentCompactWidth', 'preferencesButtonPosition', 'dynamicTitle', 'watermark', 'watermarkContent', 'enableCheckUpdates', 'enableCopyPreferences', 'enableStickyPreferencesNavigationBar'].includes(field);
-  if (section === 'widget' && ['languageToggle', 'notification'].includes(field)) return false;
+  if (section === 'widget' && !['globalSearch', 'themeToggle', 'languageToggle', 'notification', 'lockScreen', 'fullscreen', 'timezone', 'refresh'].includes(field)) return false;
   return ['theme', 'sidebar', 'navigation', 'breadcrumb', 'tabbar', 'footer', 'header', 'widget', 'shortcutKeys', 'transition'].includes(section);
 }
 
@@ -84,7 +84,7 @@ export function sitePreferenceOverrides(site: Omit<PublicSiteSettings, 'environm
     breadcrumb: { enable: site.preferences.breadcrumb.enable, showIcon: site.preferences.breadcrumb.showIcon, styleType: site.preferences.breadcrumb.styleType },
     tabbar: { enable: site.preferences.tabbar.enable, styleType: site.preferences.tabbar.styleType },
     footer: { enable: site.preferences.footer.enable, fixed: site.preferences.footer.fixed },
-    widget: { globalSearch: true, notification: false, languageToggle: false, lockScreen: true, fullscreen: true, timezone: true, refresh: true },
+    widget: { globalSearch: true, themeToggle: true, notification: true, languageToggle: true, lockScreen: true, fullscreen: true, timezone: true, refresh: true },
   };
 }
 
@@ -106,7 +106,7 @@ export function switchPreferencesScope(realm = 'system', userId = '', impersonat
   if (!started || scope === activeScope) return;
   persist();
   activeScope = scope;
-  activeHomePath = `/${realm}/profile`;
+  activeHomePath = `/${realm}/overview`;
   defaults = { ...defaults, app: { ...defaults.app, defaultHomePath: activeHomePath } };
   restore();
 }

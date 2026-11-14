@@ -271,7 +271,7 @@ export async function login(login: string, password: string, realm: Realm = 'sys
   session.token = result.accessToken; session.user = result.user; session.notice = '';
   sessionStorage.setItem(sessionKey(), result.accessToken);
   if (realm === 'system' && !entryContext.bound && tenant) {
-    window.location.assign(`/t/${tenant.id}/#${'/system/profile'}`);
+    window.location.assign(`/t/${tenant.id}/#${'/system/overview'}`);
     return;
   }
   await loadUser();

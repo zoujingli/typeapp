@@ -2,11 +2,13 @@ import type { RouteRecordRaw } from 'vue-router';
 
 const basic = () => import('#/layouts/basic.vue');
 const profile = () => import('#/views/shared/identity/profile.vue');
+const overview = () => import('#/views/shared/overview.vue');
 const users = () => import('#/views/shared/identity/users.vue');
 const roles = () => import('#/views/shared/identity/roles.vue');
 
-export const platformRoutes: RouteRecordRaw = { path: '/platform', component: basic, redirect: '/platform/profile', meta: { realm: 'platform', title: '平台管理' }, children: [
-    { path: '/platform/profile', component: profile, meta: { title: '个人中心', icon: 'lucide:user', order: 0 } },
+export const platformRoutes: RouteRecordRaw = { path: '/platform', component: basic, redirect: '/platform/overview', meta: { realm: 'platform', title: '平台管理' }, children: [
+    { path: '/platform/overview', component: overview, meta: { title: '工作台', icon: 'lucide:layout-dashboard', order: 0 } },
+    { path: '/platform/profile', component: profile, meta: { title: '个人中心', icon: 'lucide:user', order: 1 } },
     { path: 'groups/operations', name: 'platform-directory-operations', meta: { directory: true, title: '客户与物联', icon: 'lucide:building-2', order: 10 }, children: [
       { path: '/platform/tenants', component: () => import('#/views/platform/tenants.vue'), meta: { title: '客户管理', icon: 'lucide:building-2', order: 10, permission: 'platform.tenants.read' } },
       { path: '/platform/enrollments', component: () => import('#/views/center/enrollments.vue'), meta: { title: '注册资格', icon: 'lucide:badge-check', order: 20, permission: 'platform.enrollments.read' } },

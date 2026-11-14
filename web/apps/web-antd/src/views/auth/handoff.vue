@@ -7,7 +7,7 @@ const route = useRoute(); const router = useRouter(); const failure = ref('');
 onMounted(async () => {
   const code = typeof route.query.code === 'string' ? route.query.code : '';
   history.replaceState(history.state, '', `${location.pathname}#/system/handoff`);
-  try { await consumeHandoff(code); await router.replace('/system/profile'); }
+  try { await consumeHandoff(code); await router.replace('/system/overview'); }
   catch (error) { failure.value = errorText(error); }
 });
 </script>
