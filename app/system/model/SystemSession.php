@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace app\system\model;
 
 use app\platform\model\PlatformSession;
-use Type\Orm\Attribute\BelongsTo;
 use Type\Orm\Model;
 
 /**
@@ -20,23 +19,33 @@ use Type\Orm\Model;
  * @property null|string $actor_id 真实平台操作者的账号标识。
  * @property null|string $source_session_id 来源平台会话标识，用于撤销后续模拟访问。
  * @method static \Type\Orm\ModelQuery<static> query(string $alias = '')
+ * @method static \Type\Orm\ModelQuery<static> where(string|array $field, mixed $operator = null, mixed $value = null, string $boolean = 'AND')
+ * @method static \Type\Orm\ModelQuery<static> order(string $field, string $direction = 'ASC')
+ * @method static \Type\Orm\ModelQuery<static> limit(int $count, int $offset = 0)
+ * @method static \Type\Orm\ModelQuery<static> with(string $name, ?\Closure $relation = null)
  * @method static static|null find(int|string $id)
  * @method static static create(array $values)
  * @method static static firstOrCreate(array $identity, array $values = [])
+ * @method static bool destroy(int|string $id)
+ * @method static \Type\Orm\Helper\QueryHelper search(array $input = [], string $alias = '')
  */
 final class SystemSession extends Model
 {
-    /** 显式加载的所属账号。
-     * @var list<SystemUser>
+    /**
+     * 显式加载的所属账号。
      */
-    #[BelongsTo(SystemUser::class, foreignKey: 'user_id')]
-    public ?SystemUser $user;
+    public function user(): array
+    {
+        return $this->belongsTo(SystemUser::class, 'user_id');
+    }
 
-    /** 显式加载的来源平台会话。
-     * @var list<PlatformSession>
+    /**
+     * 显式加载的来源平台会话。
      */
-    #[BelongsTo(PlatformSession::class, foreignKey: 'source_session_id', ownerKey: 'id')]
-    public ?PlatformSession $source_session;
+    public function source_session(): array
+    {
+        return $this->belongsTo(PlatformSession::class, 'source_session_id', 'id');
+    }
 
     protected string $table = 'system_session';
 

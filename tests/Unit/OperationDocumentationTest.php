@@ -20,7 +20,9 @@ use Type\Runtime\ExecutionScope;
  */
 final class OperationDocumentationTest extends TestCase
 {
-    /** Model 与 Service 共存时最终映射同一文件，保留构造器和其他声明且拒绝重转。 */
+    /**
+     * Model 与 Service 共存时最终映射同一文件，保留构造器和其他声明且拒绝重转。
+     */
     public function testModelsAndServicesShareOneFinalReplacement(): void
     {
         $root = dirname(__DIR__, 2) . '/build/operation-bundle-' . bin2hex(random_bytes(6));
@@ -33,8 +35,10 @@ final class OperationDocumentationTest extends TestCase
 <?php
 declare(strict_types=1);
 namespace OperationBundle;
-#[\Type\Orm\Attribute\Table('bundle')]
-final class Item extends \Type\Orm\Model { public int $id; public string $name; }
+final class Item extends \Type\Orm\Model {
+    protected string $table = 'bundle';
+    protected array $schema = ['id' => 'int', 'name' => 'string'];
+}
 final class Companion { public function value(): string { return 'companion'; } }
 final class Service {
     public function __construct(public readonly string $prefix) {}
@@ -79,7 +83,9 @@ PHP);
         }
     }
 
-    /** 验证生成服务文档在原命名语境中解析别名、数组字段、常量及局部类型，且不加载业务类。 */
+    /**
+     * 验证生成服务文档在原命名语境中解析别名、数组字段、常量及局部类型，且不加载业务类。
+     */
     public function testAliasesShapesConstantsAndLocalTypesKeepTheirContext(): void
     {
         $root = dirname(__DIR__, 2);
@@ -138,7 +144,9 @@ PHP);
         }
     }
 
-    /** 验证类级模板与类型定义可供生成方法使用，不把属性声明误写为生成成员。 */
+    /**
+     * 验证类级模板与类型定义可供生成方法使用，不把属性声明误写为生成成员。
+     */
     public function testClassTypeDefinitionsRemainAvailableWithoutInventingMembers(): void
     {
         $root = dirname(__DIR__, 2);

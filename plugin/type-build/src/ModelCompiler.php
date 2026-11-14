@@ -13,7 +13,9 @@ use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\ParserFactory;
 use PhpParser\PrettyPrinter\Standard;
 
-/** 静态转换 PHP 类型属性模型；开发与 AOT 使用相同类名、业务方法和虚拟属性。 */
+/**
+ * 静态转换 PHP 类型属性模型；开发与 AOT 使用相同类名、业务方法和虚拟属性。
+ */
 final class ModelCompiler
 {
     private const MAPPING_PROPERTY = '__typeMapping';
@@ -44,7 +46,7 @@ final class ModelCompiler
             }
             $ast = $parser->parse($text) ?? [];
             $ast = (new NodeTraverser(new NameResolver()))->traverse($ast);
-            $this->validateAttributeTargets($ast);
+            $this->rejectModelAttributes($ast);
             $changed = false;
             foreach ($finder->findInstanceOf($ast, Node\Stmt\Class_::class) as $node) {
                 if ($node->name === null) {
@@ -61,13 +63,9 @@ final class ModelCompiler
                         }
                     }
                 }
-                $table = $this->attribute($node->attrGroups, 'Table', ['name', 'primary', 'generatedPrimary', 'softDelete', 'version', 'database', 'tenant', 'createdAt', 'updatedAt']);
                 $schema = $parent === 'Type\Orm\Model' ? (new ModelSchemaDeclaration())->expand($node, $class) : null;
+                $table = $schema['table'] ?? null;
                 if ($schema !== null) {
-                    if ($table !== null) {
-                        throw new \RuntimeException('模型不能混合 Table Attribute 与 table/schema 声明：' . $class);
-                    }
-                    $table = $schema['table'];
                     $classProperties[strtolower($class)] = [];
                     foreach ($node->getProperties() as $property) {
                         foreach ($property->props as $member) {
@@ -76,15 +74,6 @@ final class ModelCompiler
                     }
                 }
                 if ($table === null) {
-                    foreach ($node->getProperties() as $property) {
-                        foreach ($property->attrGroups as $group) {
-                            foreach ($group->attrs as $attribute) {
-                                if (str_starts_with($attribute->name->toString(), 'Type\Orm\Attribute\\')) {
-                                    throw new \RuntimeException('模型字段或关系需要所属类声明 Table：' . $class);
-                                }
-                            }
-                        }
-                    }
                     continue;
                 }
                 if ($parent !== 'Type\Orm\Model' || $node->isAbstract() || $node->isReadonly() || !str_contains($class, '\\')) {
@@ -93,7 +82,7 @@ final class ModelCompiler
                 if (isset($models[strtolower($class)])) {
                     throw new \RuntimeException('模型类重复：' . $class);
                 }
-                $declaration = $this->model($node, $class, $table);
+                $declaration = $this->model($node, $class, $table, $schema['relations'] ?? []);
                 foreach ($schema['fields'] ?? [] as $name => $options) {
                     $declaration['fields'][$name] = array_replace($declaration['fields'][$name], $options);
                 }
@@ -152,7 +141,7 @@ final class ModelCompiler
             }
             if (isset($models[$class])) {
                 foreach (array_intersect($classProperties[$class], $classProperties['type\orm\model'] ?? []) as $collision) {
-                    throw new \RuntimeException('模型属性与 Model 基类成员冲突，请用 Column 映射数据库列：' . $models[$class]['class'] . '::$' . $collision);
+                    throw new \RuntimeException('模型属性与 Model 基类成员冲突，请在 schema 中使用 column 映射数据库列：' . $models[$class]['class'] . '::$' . $collision);
                 }
             }
         }
@@ -161,30 +150,36 @@ final class ModelCompiler
         return ['code' => $code, 'originals' => $originals, 'models' => array_values($models)];
     }
 
-    /** 旧配置必须迁移，不能用旧缓存继续执行 JSON 模型。 */
+    /**
+     * 旧配置必须迁移，不能用旧缓存继续执行 JSON 模型。
+     */
     public function assertConfiguration(array $configuration): void
     {
         if (array_key_exists('models', $configuration)) {
-            throw new \RuntimeException('models 配置已移除，请将模型迁移为继承 Type\Orm\Model 的 PHP 类型属性与 Table/Column Attribute，并纳入 sources');
+            throw new \RuntimeException('models 配置已移除，请将模型声明为继承 Type\Orm\Model 的 table/schema，并纳入 sources');
         }
     }
 
-    /** 错误位置和拼写不能被当作普通 PHP Attribute 静默略过。 */
-    private function validateAttributeTargets(array $ast): void
+    /**
+     * 模型表、字段和关系不再使用注解；写错的注解也不能被当成普通 PHP 属性忽略。
+     */
+    private function rejectModelAttributes(array $ast): void
     {
         foreach ((new NodeFinder())->find($ast, static fn (Node $node): bool => property_exists($node, 'attrGroups')) as $node) {
             foreach ($node->attrGroups as $group) {
                 foreach ($group->attrs as $attribute) {
                     $name = $attribute->name->toString();
-                    if (!str_starts_with($name, 'Type\Orm\Attribute\\') || $name === 'Type\Orm\Attribute\Transactional') {
+                    if (!in_array($name, [
+                        'Type\Orm\Attribute\Table',
+                        'Type\Orm\Attribute\Column',
+                        'Type\Orm\Attribute\HasOne',
+                        'Type\Orm\Attribute\HasMany',
+                        'Type\Orm\Attribute\BelongsTo',
+                        'Type\Orm\Attribute\BelongsToMany',
+                    ], true)) {
                         continue;
                     }
-                    $short = substr($name, strlen('Type\Orm\Attribute\\'));
-                    $valid = $node instanceof Node\Stmt\Class_ ? $short === 'Table'
-                        : ($node instanceof Node\Stmt\Property && in_array($short, ['Column', 'HasOne', 'HasMany', 'BelongsTo', 'BelongsToMany'], true));
-                    if (!$valid) {
-                        throw new \RuntimeException('模型 Attribute 名称或声明位置无效：' . $name);
-                    }
+                    throw new \RuntimeException('模型注解已移除，请使用 table、schema 与关系方法：' . $name);
                 }
             }
         }
@@ -225,7 +220,7 @@ final class ModelCompiler
         return $found;
     }
 
-    private function model(Node\Stmt\Class_ $node, string $class, array $table): array
+    private function model(Node\Stmt\Class_ $node, string $class, array $table, array $declaredRelations = []): array
     {
         $model = ['class' => $class, 'table' => $table['name'] ?? '', 'primary' => $table['primary'] ?? 'id',
             'generated-primary' => $table['generatedPrimary'] ?? true, 'soft-delete' => $table['softDelete'] ?? null,
@@ -257,8 +252,9 @@ final class ModelCompiler
                 }
                 $properties[$propertyName] = true;
             }
+            $name = $member->props[0]->name->toString();
             $column = $this->attribute($member->attrGroups, 'Column', ['name', 'type', 'fillable', 'visible', 'required', 'precision', 'scale', 'integerRange']);
-            $relation = $this->relation($member->attrGroups);
+            $relation = $declaredRelations[$name] ?? $this->relation($member->attrGroups);
             if (!$member->isPublic() && $column === null && $relation === null) {
                 continue;
             }
@@ -266,7 +262,6 @@ final class ModelCompiler
                 || $member->props[0]->default !== null || $member->hooks !== [] || $member->type === null) {
                 throw new \RuntimeException('模型属性必须是无默认值、无自定义钩子的公开类型属性：' . $class);
             }
-            $name = $member->props[0]->name->toString();
             $nullable = $member->type instanceof Node\NullableType;
             $typeNode = $nullable ? $member->type->type : $member->type;
             if (!$typeNode instanceof Node\Identifier && !$typeNode instanceof Node\Name) {
@@ -495,6 +490,17 @@ final class ModelCompiler
                 . "        return \\_query(self::query(\$alias), \$input);\n    }\n";
             $code .= "    /** 按主键查找当前模型；记录不存在时返回 null。 */\n    public static function find(int|string \$id): ?{$class}\n    {\n"
                 . "        return self::query()->find(\$id);\n    }\n";
+            $code .= "    /** 按当前模型范围删除一条记录；记录不存在时返回 false。 */\n    public static function destroy(int|string \$id): bool\n    {\n"
+                . "        \$found = self::find(\$id);\n        return \$found === null ? false : \$found->delete();\n    }\n";
+            $code .= "    /** 从模型开始组合条件；两个参数表示等于，数组表示多个等于。 */\n    public static function where(string|array \$field, mixed \$operator = null, mixed \$value = null, string \$boolean = 'AND'): \\Type\\Orm\\ModelQuery\n    {\n"
+                . "        \$query = self::query();\n        if (is_array(\$field)) {\n            return \$query->where(\$field, null, null, \$boolean);\n        }\n"
+                . "        return \\func_num_args() < 3 ? \$query->where(\$field, \$operator) : \$query->where(\$field, \$operator, \$value, \$boolean);\n    }\n";
+            $code .= "    /** 按模型字段排序并返回新查询。 */\n    public static function order(string \$field, string \$direction = 'ASC'): \\Type\\Orm\\ModelQuery\n    {\n"
+                . "        return self::query()->order(\$field, \$direction);\n    }\n";
+            $code .= "    /** 限制返回条数并返回新查询。 */\n    public static function limit(int \$count, int \$offset = 0): \\Type\\Orm\\ModelQuery\n    {\n"
+                . "        return self::query()->limit(\$count, \$offset);\n    }\n";
+            $code .= "    /** 预加载已声明关系；名称与关系方法相同。 */\n    public static function with(string \$name, ?\\Closure \$relation = null): \\Type\\Orm\\ModelQuery\n    {\n"
+                . "        return self::query()->with(\$name, \$relation);\n    }\n";
             $code .= "    /** 创建并保存当前模型，行为取消时明确失败。 */\n    public static function create(array \$values): {$class}\n    {\n"
                 . "        \$model = new {$class}(\$values);\n        if (\$model->save() === 'cancelled') {\n            throw new \\Type\\Orm\\ModelException('model_creation_cancelled', '模型创建被取消');\n        }\n        return \$model;\n    }\n";
             $code .= "    /** 按真实非空唯一身份从主库获取或创建；其他约束及不可见冲突保持失败。 */\n    public static function firstOrCreate(array \$identity, array \$values = []): {$class}\n    {\n"

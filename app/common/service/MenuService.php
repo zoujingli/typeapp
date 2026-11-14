@@ -14,10 +14,14 @@ use Type\Orm\Db;
 use Type\Orm\Model;
 use Type\Orm\ModelQuery;
 
-/** 菜单元数据可管理，页面和操作能力只取已实现的固定登记。 */
+/**
+ * 菜单元数据可管理，页面和操作能力只取已实现的固定登记。
+ */
 final class MenuService
 {
-    /** 已实现页面与操作的唯一登记，同时用于空库初始化和运行时绑定校验。 */
+    /**
+     * 已实现页面与操作的唯一登记，同时用于空库初始化和运行时绑定校验。
+     */
     public static function definitions(): array
     {
         $pages = [
@@ -123,7 +127,9 @@ final class MenuService
         return $nodes;
     }
 
-    /** 安装事务写入代码已登记目录，不额外开放客户目录修改入口。 */
+    /**
+     * 安装事务写入代码已登记目录，不额外开放客户目录修改入口。
+     */
     public static function initialize(): void
     {
         foreach (self::definitions() as $definition) {
@@ -135,7 +141,9 @@ final class MenuService
         }
     }
 
-    /** 目录停用与祖先停用共同撤销能力；显隐只影响导航。 */
+    /**
+     * 目录停用与祖先停用共同撤销能力；显隐只影响导航。
+     */
     public static function catalog(string $realm): array
     {
         $catalog = [];
@@ -147,13 +155,17 @@ final class MenuService
         return $catalog;
     }
 
-    /** 返回 Vben 使用的嵌套菜单，操作节点不显示为页面。 */
+    /**
+     * 返回 Vben 使用的嵌套菜单，操作节点不显示为页面。
+     */
     public static function navigation(string $realm, array $permissions): array
     {
         return self::children(self::active($realm), null, $permissions);
     }
 
-    /** 角色表单以节点标识表达关联，权限字符串由平台目录解析。 */
+    /**
+     * 角色表单以节点标识表达关联，权限字符串由平台目录解析。
+     */
     public static function permissionsForIds(string $realm, array $ids): array
     {
         if (count($ids) > 512 || count(array_unique($ids)) !== count($ids)) {
@@ -175,6 +187,12 @@ final class MenuService
         return array_values(array_unique($permissions));
     }
 
+    /**
+     * 把权限码反查成当前域已启用菜单的标识。
+     *
+     * @param list<string> $permissions
+     * @return list<string>
+     */
     public static function idsForPermissions(string $realm, array $permissions): array
     {
         $ids = [];
@@ -186,7 +204,9 @@ final class MenuService
         return $ids;
     }
 
-    /** 平台管理目录或系统角色选项；后者只能读取当前可授予范围。 */
+    /**
+     * 平台管理目录或系统角色选项；后者只能读取当前可授予范围。
+     */
     public static function listing(Identity $identity, string $realm, bool $management = false): array
     {
         $actorRealm = (string)($identity->attributes()['realm'] ?? '');
@@ -196,7 +216,7 @@ final class MenuService
             throw new HttpError(403, 'permission_denied');
         }
         $rows = [];
-        foreach (self::query($realm)->orderBy('order_number')->orderBy('id')->get() as $menu) {
+        foreach (self::query($realm)->order('order_number')->order('id')->get() as $menu) {
             $rows[$menu->id] = $menu->toArray();
         }
         $included = [];
@@ -219,7 +239,9 @@ final class MenuService
         return ['items' => $items];
     }
 
-    /** 元数据变更在平台授权事务内完成，不能伪造未实现的组件或能力。 */
+    /**
+     * 元数据变更在平台授权事务内完成，不能伪造未实现的组件或能力。
+     */
     public static function save(Identity $identity, string $realm, string $id, array $data, bool $delete = false): array
     {
         return RoleService::authorized($identity, null, 'platform.menus.manage', static function (Identity $actor, array $permissions) use ($realm, $id, $data, $delete): array {
@@ -296,7 +318,9 @@ final class MenuService
         }, 'platform', 'platform');
     }
 
-    /** 目录按模块存储；共享授权算法不能跨表读取另一身份域。 */
+    /**
+     * 目录按模块存储；共享授权算法不能跨表读取另一身份域。
+     */
     private static function query(string $realm): ModelQuery
     {
         return match ($realm) {
@@ -306,13 +330,17 @@ final class MenuService
         };
     }
 
-    /** 新建时保留具体模型，供 ORM 与 TypePHP 按各自表声明装配。 */
+    /**
+     * 新建时保留具体模型，供 ORM 与 TypePHP 按各自表声明装配。
+     */
     private static function make(string $realm, array $values): Model
     {
         return $realm === 'platform' ? new PlatformMenu($values) : new SystemMenu($values);
     }
 
-    /** 通过角色模型检查目录引用，避免菜单服务直接读取角色权限中间表。 */
+    /**
+     * 通过角色模型检查目录引用，避免菜单服务直接读取角色权限中间表。
+     */
     private static function roleQuery(string $realm): ModelQuery
     {
         return $realm === 'platform' ? PlatformRole::query()->master() : SystemRole::query()->master();
@@ -324,7 +352,7 @@ final class MenuService
             throw new HttpError(403, 'identity_realm_forbidden');
         }
         $rows = [];
-        foreach (self::query($realm)->orderBy('order_number')->orderBy('id')->limit(4096)->get() as $menu) {
+        foreach (self::query($realm)->order('order_number')->order('id')->limit(4096)->get() as $menu) {
             $rows[$menu->id] = $menu->toArray();
         }
         $active = [];

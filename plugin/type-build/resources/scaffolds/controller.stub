@@ -5,14 +5,13 @@ declare(strict_types=1);
 namespace {{namespace}};
 
 use {{service}};
-use {{input}};
 use Psr\Http\Message\ServerRequestInterface;
 use Type\Core\Http\Attribute\Route;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Orm\ModelException;
 
-/** HTTP 只接收有效输入、检查授权并返回显式投影。 */
+/** HTTP 只校验输入、检查身份并返回服务结果。 */
 final class {{name}}
 {
     /** 服务由应用共同装配，不持有请求或连接。 */
@@ -20,7 +19,7 @@ final class {{name}}
     {
     }
 
-    /** @return array{data:array} 最多二十条记录。 */
+    /** @return array{data:list<array{id:int, name:string, version:int}>} 最多二十条记录。 */
     #[Route('{{route}}', methods: ['GET'], name: '{{routeName}}.index')]
     public function index(ServerRequestInterface $request): array
     {
@@ -30,10 +29,15 @@ final class {{name}}
 
     /** @return array{id:int, name:string, version:int} 创建成功使用固定 201。 */
     #[Route('{{route}}', methods: ['POST'], name: '{{routeName}}.create', status: 201)]
-    public function create({{inputName}} $input, ServerRequestInterface $request): array
+    public function create(ServerRequestInterface $request): array
     {
         $this->authorize($request);
-        return $this->service->create($input->data->toArray());
+        $input = \_vali([
+            'name.required' => '名称不能为空',
+            'name.trim' => '名称需要去除空白',
+            'name.length:1,100' => '名称长度不正确',
+        ], 'body');
+        return $this->service->create($input);
     }
 
     /** @return array{id:int, name:string, version:int} 路径 id 不由查询或正文覆盖。 */
@@ -52,12 +56,16 @@ final class {{name}}
     }
 
     /** @return array{id:int, name:string, version:int} 缺失字段保持原值。 */
-    #[Route('{{route}}/{id}', methods: ['PATCH'], name: '{{routeName}}.update', input: ['patch' => true])]
-    public function update(int $id, {{inputName}} $input, ServerRequestInterface $request): array
+    #[Route('{{route}}/{id}', methods: ['PATCH'], name: '{{routeName}}.update')]
+    public function update(int $id, ServerRequestInterface $request): array
     {
         $this->authorize($request);
+        $input = \_vali([
+            'name.trim' => '名称需要去除空白',
+            'name.length:1,100' => '名称长度不正确',
+        ], 'body');
         try {
-            return $this->service->update($id, $input->data->toArray());
+            return $this->service->update($id, $input);
         } catch (ModelException $error) {
             if ($error->errorCode() === 'record_not_found') {
                 throw new HttpError(404, 'record_not_found');

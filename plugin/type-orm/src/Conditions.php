@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-/** 不可变条件组；回调返回新条件，不修改既有查询。 */
+/**
+ * 不可变条件组；回调返回新条件，不修改既有查询。
+ */
 final class Conditions
 {
     private SqlDialect $dialect;
@@ -16,13 +18,17 @@ final class Conditions
     // 1 恒真、0 恒假、-1 取决于数据，用于识别空 NOT IN 等显式无约束写入。
     private int $truth = 1;
 
-    /** 绑定方言；需要子查询时同时绑定所属连接，条件构造本身不执行 SQL。 */
+    /**
+     * 绑定方言；需要子查询时同时绑定所属连接，条件构造本身不执行 SQL。
+     */
     public function __construct(SqlDialect $dialect, private ?Connection $connection = null)
     {
         $this->dialect = $dialect;
     }
 
-    /** 返回新增绑定比较的新条件组；null 仅允许等于或不等于比较。 */
+    /**
+     * 返回新增绑定比较的新条件组；null 仅允许等于或不等于比较。
+     */
     public function where(string $column, string $operator, mixed $value, string $boolean = 'AND'): Conditions
     {
         $operator = $this->dialect->operator($operator);
@@ -38,13 +44,27 @@ final class Conditions
         return $this->append($column . ' ' . $operator . ' ' . $this->dialect->placeholder($value), [$this->dialect->value($value)], $boolean);
     }
 
-    /** 将比较以 OR 加入新条件组，保留按调用顺序括号化的语义。 */
+    /**
+     * 包含式匹配。感叹号是转义符，调用方先把用户输入里的 !、% 和 _ 转成字面量。
+     */
+    public function whereLike(string $column, string $pattern, string $boolean = 'AND'): Conditions
+    {
+        $column = $this->dialect->identifier($column);
+
+        return $this->append($column . ' LIKE ' . $this->dialect->placeholder($pattern) . " ESCAPE '!'", [$this->dialect->value($pattern)], $boolean);
+    }
+
+    /**
+     * 将比较以 OR 加入新条件组，保留按调用顺序括号化的语义。
+     */
     public function orWhere(string $column, string $operator, mixed $value): Conditions
     {
         return $this->where($column, $operator, $value, 'OR');
     }
 
-    /** 明确生成 IS NULL 或 IS NOT NULL，不把 null 作为普通占位值比较。 */
+    /**
+     * 明确生成 IS NULL 或 IS NOT NULL，不把 null 作为普通占位值比较。
+     */
     public function whereNull(string $column, bool $not = false, string $boolean = 'AND'): Conditions
     {
         return $this->where($column, $not ? '!=' : '=', null, $boolean);
@@ -88,7 +108,9 @@ final class Conditions
         return $this->whereIn($column, $values, true);
     }
 
-    /** @param \Closure(Conditions): Conditions $group 接收独立条件组并返回组合后的条件。 */
+    /**
+     * @param \Closure(Conditions): Conditions $group 接收独立条件组并返回组合后的条件。
+     */
     public function whereGroup(\Closure $group, string $boolean = 'AND'): Conditions
     {
         $result = $group(new Conditions($this->dialect, $this->connection));
@@ -99,7 +121,9 @@ final class Conditions
         return $this->append('(' . $result->sql() . ')', $result->parameters(), $boolean, $result->truth);
     }
 
-    /** 生成用于 HAVING 的受支持聚合比较，不接受隐式 null。 */
+    /**
+     * 生成用于 HAVING 的受支持聚合比较，不接受隐式 null。
+     */
     public function whereAggregate(string $function, string $column, string $operator, mixed $value): Conditions
     {
         if ($value === null) {
@@ -121,27 +145,35 @@ final class Conditions
         return $this->append($comparison[0], $comparison[1], $boolean);
     }
 
-    /** 比较两个列标识符；右侧不会作为字面值绑定。 */
+    /**
+     * 比较两个列标识符；右侧不会作为字面值绑定。
+     */
     public function whereColumn(string $left, string $operator, string $right, string $boolean = 'AND'): Conditions
     {
         return $this->append($this->dialect->identifier($left) . ' ' . $this->dialect->operator($operator)
             . ' ' . $this->dialect->identifier($right), [], $boolean);
     }
 
-    /** 只组合相同连接的子查询，不执行子查询。 */
+    /**
+     * 只组合相同连接的子查询，不执行子查询。
+     */
     public function whereExists(Query $query, bool $not = false, string $boolean = 'AND'): Conditions
     {
         $statement = $this->subquery($query);
         return $this->append(($not ? 'NOT EXISTS (' : 'EXISTS (') . $statement[0] . ')', $statement[1], $boolean);
     }
 
-    /** 识别恒真条件，用于拒绝未声明 allowAll 的全范围写入。 */
+    /**
+     * 识别恒真条件，用于拒绝未声明 allowAll 的全范围写入。
+     */
     public function unconstrained(): bool
     {
         return $this->truth === 1;
     }
 
-    /** 取得组合后的条件 SQL，绑定值通过 parameters 单独取得。 */
+    /**
+     * 取得组合后的条件 SQL，绑定值通过 parameters 单独取得。
+     */
     public function sql(): string
     {
         return implode(' ', $this->clauses);

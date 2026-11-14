@@ -86,7 +86,9 @@ final class RecoveryService
         }, $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
     }
 
-    /** 每次最多100主体；原值、隔离状态和游标同事务，崩溃后以原ID继续。 */
+    /**
+     * 每次最多100主体；原值、隔离状态和游标同事务，崩溃后以原ID继续。
+     */
     public static function isolate(Connection $connection, string $id): array
     {
         self::identity($id);
@@ -194,7 +196,9 @@ final class RecoveryService
         }, $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
     }
 
-    /** 核对完成后仍有界恢复；所有未匹配主体保持隔离，旧登录会话和模拟会话不复活。 */
+    /**
+     * 核对完成后仍有界恢复；所有未匹配主体保持隔离，旧登录会话和模拟会话不复活。
+     */
     public static function restore(Connection $connection, string $id): array
     {
         self::identity($id);
@@ -270,7 +274,9 @@ final class RecoveryService
         }
     }
 
-    /** @return array<string,mixed> 有界进度及未匹配数，不返回主体指纹或秘密。 */
+    /**
+     * @return array<string,mixed> 有界进度及未匹配数，不返回主体指纹或秘密。
+     */
     public static function status(Connection $connection): array
     {
         $run = CenterRecovery::query()->master()->onConnection($connection)->where('slot', '=', 1)->first();
@@ -287,13 +293,17 @@ final class RecoveryService
             'completed_at' => $run->get('completed_at') === null ? null : (int)$run->get('completed_at'), 'subjects' => $counts];
     }
 
-    /** @return list<string> 统一应用身份、设备和 MQTT 授权主体。 */
+    /**
+     * @return list<string> 统一应用身份、设备和 MQTT 授权主体。
+     */
     private static function kinds(): array
     {
         return [...self::APP_KINDS, ...RecoveryCatalog::kinds()];
     }
 
-    /** 源库进程已退出后，旧备份里仍为 active 的 MQTT 节点不得挡住核对后的新运行。 */
+    /**
+     * 源库进程已退出后，旧备份里仍为 active 的 MQTT 节点不得挡住核对后的新运行。
+     */
     private static function fenceStaleMqttNodes(Connection $transaction): void
     {
         if ($transaction->driverName() !== 'pgsql') {
@@ -343,7 +353,7 @@ final class RecoveryService
         $cursor = (string)$row['_subject_id'];
         $transaction->table(self::table($kind))->where('id', '=', $cursor)->update(['recovery_verified' => 0]);
         if ($kind === 'device') {
-            $transaction->table('center_device_connection')->where('device_id', '=', $cursor)->update([
+            $transaction->table('center_device_connection')->where('tenant_id', '=', $row['tenant_id'])->where('device_id', '=', $cursor)->update([
                 'status' => 'unknown', 'owner_id' => null, 'node_id' => null, 'run_id' => null,
             ]);
         }
@@ -402,6 +412,7 @@ final class RecoveryService
             'device' => ['id', 'tenant_id', 'ownership_id', 'product_id', 'lifecycle', 'version'],
             'enrollment' => ['id', 'tenant_id', 'name', 'capacity', 'registered_count', 'register_expires_at', 'enabled', 'secret_hash', 'version'],
             'application' => ['id', 'tenant_id', 'name', 'enabled', 'credential_id', 'key_version', 'access_version', 'version'],
+            'credential' => ['id', 'tenant_id', 'device_id', 'ownership_id', 'secret_hash', 'status'],
             default => ['id', 'device_id', 'ownership_id', 'secret_hash', 'status'],
         };
         $identity = [];

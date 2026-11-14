@@ -19,10 +19,14 @@ use Type\Orm\Db;
 use Type\Orm\ModelQuery;
 use Type\Runtime\ExecutionScope;
 
-/** 客户开通与平台对系统超管的显式管理，不建立跨客户人员成员关系。 */
+/**
+ * 客户开通与平台对系统超管的显式管理，不建立跨客户人员成员关系。
+ */
 final class TenantService
 {
-    /** 登录前公开客户选择，只返回启用客户的标识与名称。 */
+    /**
+     * 登录前公开客户选择，只返回启用客户的标识与名称。
+     */
     public static function publicListing(array $filters): array
     {
         $query = Tenant::query()->master()->where('enabled', '=', true);
@@ -39,7 +43,9 @@ final class TenantService
         return ['items' => $items, 'total' => $page->total(), 'page' => $page->number(), 'per_page' => $page->perPage()];
     }
 
-    /** 登录前公开客户上下文，只返回公开展示白名单中的客户摘要。 */
+    /**
+     * 登录前公开客户上下文，只返回公开展示白名单中的客户摘要。
+     */
     public static function publicSummary(string $id): array
     {
         $tenant = Tenant::query()->master()->where('enabled', '=', true)->find($id);
@@ -49,7 +55,9 @@ final class TenantService
         return $tenant->project(['id', 'name']);
     }
 
-    /** 平台目录与详情；超管清单在指定客户上下文内查询。 */
+    /**
+     * 平台目录与详情；超管清单在指定客户上下文内查询。
+     */
     public static function listing(Identity $identity, array $filters, string $id = ''): array
     {
         RoleService::readContext($identity, 'platform', '', 'tenants.read');
@@ -79,7 +87,9 @@ final class TenantService
         return ['items' => $items, 'total' => $page->total(), 'page' => $page->number(), 'per_page' => $page->perPage()];
     }
 
-    /** 同一请求重试不重复开通或交付口令，遗失秘密通过客户超管重置恢复。 */
+    /**
+     * 同一请求重试不重复开通或交付口令，遗失秘密通过客户超管重置恢复。
+     */
     public static function create(Identity $identity, array $data): array
     {
         return RoleService::authorized($identity, null, 'platform.tenants.create', static function (Identity $actor, array $permissions) use ($data): array {
@@ -110,7 +120,9 @@ final class TenantService
         }, 'platform', 'platform');
     }
 
-    /** 资料及状态版本冲突整体回滚，停用立即使入口及协议动作失去客户资格。 */
+    /**
+     * 资料及状态版本冲突整体回滚，停用立即使入口及协议动作失去客户资格。
+     */
     public static function change(Identity $identity, string $id, string $action, array $data): array
     {
         return RoleService::authorized($identity, null, 'platform.tenants.' . $action, static function (Identity $actor, array $permissions) use ($id, $action, $data): array {
@@ -135,7 +147,9 @@ final class TenantService
         }, 'platform', 'platform');
     }
 
-    /** 平台只管理指定客户的超管；原账号保留，移除或替换时保护最后一位有效超管。 */
+    /**
+     * 平台只管理指定客户的超管；原账号保留，移除或替换时保护最后一位有效超管。
+     */
     public static function administrator(Identity $identity, string $tenantId, string $action, string $id, array $data): array
     {
         return RoleService::authorized($identity, null, 'platform.tenants.administrators.manage', static function (Identity $actor, array $permissions) use ($tenantId, $action, $id, $data): array {
@@ -186,7 +200,9 @@ final class TenantService
         }, 'platform', 'platform');
     }
 
-    /** 真实超管资格供模拟登录签发及消费时重复核对。 */
+    /**
+     * 真实超管资格供模拟登录签发及消费时重复核对。
+     */
     public static function isAdministrator(string $tenantId, string $userId): bool
     {
         return ExecutionScope::current()->run(static function (ExecutionScope $scope) use ($userId): bool {
@@ -196,7 +212,9 @@ final class TenantService
         }, TenantContext::bindings($tenantId));
     }
 
-    /** 超管目录在数据库内筛选并分页，停用账号仍可由平台恢复或重置。 */
+    /**
+     * 超管目录在数据库内筛选并分页，停用账号仍可由平台恢复或重置。
+     */
     public static function administratorDirectory(Identity $identity, string $tenantId, int $page, int $perPage): array
     {
         RoleService::readContext($identity, 'platform', '', 'tenants.read');
@@ -206,7 +224,7 @@ final class TenantService
         return ExecutionScope::current()->run(static function (ExecutionScope $scope) use ($page, $perPage): array {
             $result = SystemUser::query()->master()
                 ->whereHas('roles', static fn (ModelQuery $roles): ModelQuery => $roles->where('protected', '=', true))
-                ->orderBy('id')->paginate($page, $perPage);
+                ->order('id')->paginate($page, $perPage);
             $items = [];
             foreach ($result->items() as $user) {
                 $items[] = $user->project(['id', 'login', 'name', 'enabled', 'version']);
@@ -221,7 +239,7 @@ final class TenantService
             $items = [];
             $query = SystemUser::query()->master()->where('enabled', '=', true)->where('recovery_verified', '=', true)
                 ->whereHas('roles', static fn (ModelQuery $roles): ModelQuery => $roles->where('protected', '=', true)->where('enabled', '=', true)->where('recovery_verified', '=', true));
-            foreach ($query->orderBy('id')->limit(100)->get() as $user) {
+            foreach ($query->order('id')->limit(100)->get() as $user) {
                 $items[] = $user->project(['id', 'login', 'name', 'enabled', 'version']);
             }
             return $items;

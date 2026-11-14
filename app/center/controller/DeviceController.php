@@ -13,23 +13,36 @@ use Type\Core\Http\CanonicalRequest;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
-use Type\Core\Http\RequestBody;
-use Type\Validate\Field;
-use Type\Validate\Input;
 
-/** 双端设备入口共用状态机；身份域由编译登记的路由决定，不接受请求指定域或归属。 */
+/**
+ * 双端设备入口共用状态机；身份域由编译登记的路由决定，不接受请求指定域或归属。
+ */
 final class DeviceController
 {
-    /** 复用请求资源、消息工厂与设备持久所有者，构造不连接数据库。 */
+    /**
+     * 复用请求资源、消息工厂与设备持久所有者，构造不连接数据库。
+     */
     public function __construct(private Factory $messages, private DeviceService $devices) {}
 
-    /** 设备以独立注册码建立接入身份；不接受人员会话代替资格，幂等重试不回显旧凭据。 */
+    /**
+     * 设备以独立注册码建立接入身份；不接受人员会话代替资格，幂等重试不回显旧凭据。
+     */
     #[Route('/public/devices/register', methods: ['POST'], name: 'device.registration')]
     public function enroll(ServerRequestInterface $request): ResponseInterface
     {
-        $data = $this->payload($request, ['id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D'),
-            'tenant_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D'), 'device_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D'),
-            'name' => Field::text()->required()->trim()->length(1, 100), 'code' => Field::text()->required()->matches('/^[a-f0-9]{32}\.[a-f0-9]{64}$/D')]);
+        $data = $this->payload($request, [
+            'id.required' => '请求标识不能为空',
+            'id.matches:/^[a-f0-9]{32}$/D' => '请求标识不正确',
+            'tenant_id.required' => '客户标识不能为空',
+            'tenant_id.matches:/^[a-f0-9]{32}$/D' => '客户标识不正确',
+            'device_id.required' => '设备标识不能为空',
+            'device_id.matches:/^[a-f0-9]{32}$/D' => '设备标识不正确',
+            'name.required' => '名称不能为空',
+            'name.trim' => '名称需要去除空白',
+            'name.length:1,100' => '名称长度不正确',
+            'code.required' => '注册码不能为空',
+            'code.matches:/^[a-f0-9]{32}\.[a-f0-9]{64}$/D' => '注册码不正确',
+        ]);
         $canonical = $request->getAttribute('type.request');
         if (!$canonical instanceof CanonicalRequest) {
             throw new HttpError(400, 'invalid_peer');
@@ -38,32 +51,36 @@ final class DeviceController
         return $this->response($result['replayed'] ? 200 : 201, ['data' => $result]);
     }
 
-    /** 客户查询当前租户，平台可按归属筛选全局资产；列表不附带模型内容或遥测。 */
+    /**
+     * 客户查询当前租户，平台可按归属筛选全局资产；列表不附带模型内容或遥测。
+     */
     #[Route('/center/devices', name: 'center.devices', middleware: ['system.auth'])]
     #[Route('/platform/devices', name: 'platform.devices', middleware: ['platform.auth'])]
     public function devices(ServerRequestInterface $request): ResponseInterface
     {
         $realm = $this->realm($request);
         $tenantId = $this->tenant($request, $realm);
-        $fields = ['name' => Field::text()->length(0, 100), 'product_id' => Field::text()->matches('/^([a-f0-9]{32})?$/D'),
-            'lifecycle' => Field::text()->oneOf(['', 'inactive', 'enabled', 'disabled', 'retired'])];
+        $rules = [
+            'name.length:0,100' => '名称长度不正确',
+            'product_id.matches:/^([a-f0-9]{32})?$/D' => '分类标识不正确',
+            'lifecycle.in:,inactive,enabled,disabled,retired' => '生命周期不正确',
+            'page.default' => 1,
+            'page.integer' => '页码不正确',
+            'page.between:1,100000' => '页码超出范围',
+            'per_page.default' => 20,
+            'per_page.integer' => '每页数量不正确',
+            'per_page.between:1,100' => '每页数量超出范围',
+        ];
         if ($realm === 'platform') {
-            $fields['tenant_id'] = Field::text()->matches('/^([a-f0-9]{32})?$/D');
+            $rules['tenant_id.matches:/^([a-f0-9]{32})?$/D'] = '客户标识不正确';
         }
-        $input = (new Input([]))->withQuery($request->getUri()->getQuery());
-        $fields += ['page' => Field::integer()->cast()->range(1, 100000), 'per_page' => Field::integer()->cast()->range(1, 100)];
-        if (array_diff(array_keys($input->source('query')), array_keys($fields)) !== []) {
-            throw new HttpError(422, 'device_query_invalid');
-        }
-        $declarations = [];
-        foreach ($fields as $name => $field) {
-            $declarations[$name] = $field->from('query');
-        }
-        $query = \_vali($declarations, $input) + ['page' => 1, 'per_page' => 20];
+        $query = \_vali($rules, 'query');
         return $this->response(200, $this->devices->devices($this->identity($request), $tenantId, $query['page'], $query['per_page'], $query, $realm));
     }
 
-    /** 详情采用当前身份域投影；资料修改只接受名称及同客户分类，不能更换归属或生命周期。 */
+    /**
+     * 详情采用当前身份域投影；资料修改只接受名称及同客户分类，不能更换归属或生命周期。
+     */
     #[Route('/center/devices/{device}', methods: ['GET', 'PATCH'], name: 'center.device', middleware: ['system.auth'], constraints: ['device' => '[a-f0-9]{32}'])]
     #[Route('/platform/devices/{device}', methods: ['GET', 'PATCH'], name: 'platform.device', middleware: ['platform.auth'], constraints: ['device' => '[a-f0-9]{32}'])]
     public function device(ServerRequestInterface $request): ResponseInterface
@@ -75,12 +92,20 @@ final class DeviceController
         if ($request->getMethod() === 'GET') {
             return $this->response(200, ['data' => $this->devices->device($identity, $tenantId, $parameters['device'], $realm)]);
         }
-        $data = $this->payload($request, ['version' => Field::integer()->required()->range(1, 2147483646), 'name' => Field::text()->required()->trim()->length(1, 100),
-            'product_id' => Field::text()->nullable()->matches('/^[a-f0-9]{32}$/D')]);
+        $data = $this->payload($request, [
+            ..._version(),
+            'name.required' => '名称不能为空',
+            'name.trim' => '名称需要去除空白',
+            'name.length:1,100' => '名称长度不正确',
+            'product_id.nullable' => '分类可以为空',
+            'product_id.matches:/^[a-f0-9]{32}$/D' => '分类标识不正确',
+        ]);
         return $this->response(200, ['data' => $this->devices->change($identity, $tenantId, $parameters['device'], 'update', $data['version'], '', $realm, $data)]);
     }
 
-    /** 202只表示撤权已提交；网络隔离的真实完成由Broker回写，不能用HTTP成功代替。 */
+    /**
+     * 202只表示撤权已提交；网络隔离的真实完成由Broker回写，不能用HTTP成功代替。
+     */
     #[Route('/center/devices/{device}/{action}', methods: ['POST'], name: 'center.device-change', middleware: ['system.auth'], constraints: ['device' => '[a-f0-9]{32}', 'action' => 'rotate|revoke|disable|enable|retire'])]
     #[Route('/platform/devices/{device}/{action}', methods: ['POST'], name: 'platform.device-change', middleware: ['platform.auth'], constraints: ['device' => '[a-f0-9]{32}', 'action' => 'rotate|revoke|disable|enable|retire'])]
     public function change(ServerRequestInterface $request): ResponseInterface
@@ -88,7 +113,11 @@ final class DeviceController
         $realm = $this->realm($request);
         $tenantId = $this->tenant($request, $realm);
         $parameters = $request->getAttribute('type.route.params', []);
-        $data = $this->payload($request, ['version' => Field::integer()->required()->range(1, 2147483646), 'confirm_device_id' => Field::text()->required()->matches('/^[a-f0-9]{32}$/D')]);
+        $data = $this->payload($request, [
+            ..._version(),
+            'confirm_device_id.required' => '确认标识不能为空',
+            'confirm_device_id.matches:/^[a-f0-9]{32}$/D' => '确认标识不正确',
+        ]);
         $result = $this->devices->change($this->identity($request), $tenantId, $parameters['device'], $parameters['action'], $data['version'], $data['confirm_device_id'], $realm);
         return $this->response($result['device']['authorization']['status'] === 'pending' ? 202 : 200, ['data' => $result]);
     }
@@ -113,17 +142,15 @@ final class DeviceController
         return TenantContext::id($request);
     }
 
-    /** @param array<string, Field> $fields 有界对象白名单；拒绝伪造归属及状态。 */
-    private function payload(ServerRequestInterface $request, array $fields, int $maximumBytes = 4096, int $maximumDepth = 4): array
+    /**
+     * @param array<string, mixed> $rules 字段规则；拒绝伪造归属及状态。
+     */
+    private function payload(ServerRequestInterface $request, array $rules): array
     {
         if (strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'))[0])) !== 'application/json') {
             throw new HttpError(415, 'json_required');
         }
-        $input = Input::json(RequestBody::read($request->getBody(), $maximumBytes), $maximumBytes, $maximumDepth);
-        if (array_diff(array_keys($input->source('body')), array_keys($fields)) !== []) {
-            throw new HttpError(422, 'unexpected_field');
-        }
-        return \_vali($fields, $input);
+        return \_vali($rules, 'body');
     }
 
     private function identity(ServerRequestInterface $request): Identity

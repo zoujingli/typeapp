@@ -16,7 +16,9 @@ use Type\Testing\Process;
  */
 final class PhpModelCompilerTest extends TestCase
 {
-    /** 无效配置不能退回默认值或执行表达式，字段声明也不能遮蔽业务属性。 */
+    /**
+     * 无效配置不能退回默认值或执行表达式，字段声明也不能遮蔽业务属性。
+     */
     public function testInvalidSchemaDeclarationsAreRejectedBeforeLoading(): void
     {
         $prefix = '<?php declare(strict_types=1); namespace InvalidSchema; use Type\Orm\Model; use Type\Orm\Attribute\Table; ';
@@ -53,7 +55,7 @@ final class PhpModelCompilerTest extends TestCase
             }
             file_put_contents($file, $prefix . '#[Table("readings")] final class Reading extends Model { protected string $table = "readings"; protected array $schema = ["id" => "int"]; }');
             $this->expectException(\RuntimeException::class);
-            $this->expectExceptionMessage('不能混合');
+            $this->expectExceptionMessage('模型注解已移除');
             (new ModelCompiler())->compile([$file]);
         } finally {
             unlink($file);
@@ -61,7 +63,9 @@ final class PhpModelCompilerTest extends TestCase
         }
     }
 
-    /** 简洁声明保持精确数值、空值、隐藏字段和对象属性的实际行为。 */
+    /**
+     * 简洁声明保持精确数值、空值、隐藏字段和对象属性的实际行为。
+     */
     public function testSchemaDeclarationProducesManagedObjectsWithoutLoadingTheSource(): void
     {
         $root = dirname(__DIR__, 2);
@@ -129,14 +133,16 @@ PHP;
         }
     }
 
-    /** 缓存槽属于生成器；公开字段和非公开业务状态都不能静默覆盖它。 */
+    /**
+     * 缓存槽属于生成器；公开字段和非公开业务状态都不能静默覆盖它。
+     */
     public function testGeneratedMappingCachePropertyCannotBeDeclared(): void
     {
         $directory = dirname(__DIR__, 2) . '/build/model-mapping-member-' . bin2hex(random_bytes(6));
         self::assertTrue(mkdir($directory, 0700));
         $file = $directory . '/Record.php';
-        $prefix = '<?php declare(strict_types=1); namespace ModelMappingMember; use Type\Orm\Model; use Type\Orm\Attribute\Table; '
-            . "#[Table('records')] final class Record extends Model { public int \$id; ";
+        $prefix = '<?php declare(strict_types=1); namespace ModelMappingMember; use Type\Orm\Model; '
+            . "final class Record extends Model { protected string \$table = 'records'; protected array \$schema = ['id' => 'int']; ";
         try {
             foreach (['public string $__typeMapping;', 'private static ?object $__typeMapping = null;', 'protected int $other, $__typeMapping;'] as $member) {
                 file_put_contents($file, $prefix . $member . ' }');
@@ -155,15 +161,17 @@ PHP;
         }
     }
 
-    /** 编译源中的 Model 基类成员不能被业务属性遮蔽；同名数据库列使用 Column 显式映射。 */
+    /**
+     * 编译源中的 Model 基类成员不能被业务属性遮蔽；同名数据库列使用 Column 显式映射。
+     */
     public function testInheritedPropertyCollisionsRequireExplicitColumnMapping(): void
     {
         $root = dirname(__DIR__, 2);
         $directory = $root . '/build/model-members-' . bin2hex(random_bytes(6));
         self::assertTrue(mkdir($directory, 0700));
         $file = $directory . '/Record.php';
-        $prefix = '<?php declare(strict_types=1); namespace ModelMembers; use Type\Orm\Model; use Type\Orm\Attribute\{Table, Column}; '
-            . "#[Table('records')] final class Record extends Model { public int \$id; ";
+        $prefix = '<?php declare(strict_types=1); namespace ModelMembers; use Type\Orm\Model; '
+            . "final class Record extends Model { protected string \$table = 'records'; protected array \$schema = ['id' => 'int']; ";
         try {
             foreach (['private string $modelState;', 'private string $values;'] as $member) {
                 file_put_contents($file, $prefix . $member . ' }');
@@ -176,7 +184,13 @@ PHP;
                 }
                 self::assertTrue($rejected, $member);
             }
-            file_put_contents($file, $prefix . "#[Column(name: 'state')] public string \$status; }");
+            file_put_contents($file, <<<'PHP'
+<?php declare(strict_types=1); namespace ModelMembers; use Type\Orm\Model;
+final class Record extends Model {
+    protected string $table = 'records';
+    protected array $schema = ['id' => 'int', 'status' => ['type' => 'string', 'column' => 'state']];
+}
+PHP);
             $result = (new ModelCompiler())->compile([$file, $root . '/plugin/type-orm/src/Model.php']);
             self::assertSame('state', $result['models'][0]['fields']['status']['column']);
             self::assertStringContainsString('getStatus()', $result['code']);
@@ -186,7 +200,9 @@ PHP;
         }
     }
 
-    /** 验证非法模型声明在构建期被拒绝，且检查过程不加载业务类。 */
+    /**
+     * 验证非法模型声明在构建期被拒绝，且检查过程不加载业务类。
+     */
     public function testInvalidDeclarationsAreRejectedWithoutLoadingBusinessCode(): void
     {
         $prefix = '<?php declare(strict_types=1); namespace ModelInvalid; use Type\Orm\Model; use Type\Orm\Attribute\{Table, Column, HasMany, BelongsToMany}; ';
@@ -260,7 +276,9 @@ PHP;
         }
     }
 
-    /** 验证同名模型的源码变化会改变生成身份，避免复用过期生成结果。 */
+    /**
+     * 验证同名模型的源码变化会改变生成身份，避免复用过期生成结果。
+     */
     public function testSameClassAndSourceChangesDetermineGeneratedIdentity(): void
     {
         $directory = dirname(__DIR__, 2) . '/build/model-identity-' . bin2hex(random_bytes(6));
@@ -271,11 +289,9 @@ PHP;
 declare(strict_types=1);
 namespace ModelIdentity;
 use Type\Orm\Model;
-use Type\Orm\Attribute\Table;
-#[Table('users')]
 final class User extends Model {
-    public int $id;
-    public string $name;
+    protected string $table = 'users';
+    protected array $schema = ['id' => 'int', 'name' => 'string'];
     public function presentName(): string { return 'before:' . $this->name; }
 }
 final class Companion { public const PRESENT = true; }
@@ -295,14 +311,14 @@ PHP;
             self::assertStringContainsString('public static function create(array $values): User', $first['code']);
             file_put_contents($file, str_replace('before:', 'after:', $source));
             self::assertNotSame(hash('sha256', $first['code']), hash('sha256', $compiler->compile([$file])['code']));
-            $timestamps = str_replace('public string $name;', 'public string $name; public int $created_at; public int $updated_at;', $source);
-            file_put_contents($file, str_replace("#[Table('users')]", "#[Table('users', createdAt: 'created_at', updatedAt: 'updated_at')]", $timestamps));
+            $timestamps = str_replace("protected array \$schema = ['id' => 'int', 'name' => 'string'];", "protected ?string \$createTime = 'created_at'; protected ?string \$updateTime = 'updated_at'; protected array \$schema = ['id' => 'int', 'name' => 'string', 'created_at' => ['type' => 'int', 'fillable' => false, 'required' => false], 'updated_at' => ['type' => 'int', 'fillable' => false, 'required' => false]];", $source);
+            file_put_contents($file, $timestamps);
             $managed = $compiler->compile([$file]);
             self::assertSame('created_at', $managed['models'][0]['created-at']);
             self::assertSame('updated_at', $managed['models'][0]['updated-at']);
             self::assertStringNotContainsString('function setCreatedAt', $managed['code']);
             self::assertStringNotContainsString('function setUpdatedAt', $managed['code']);
-            file_put_contents($file, str_replace("#[Table('users')]", "#[Table('users', createdAt: 'updated_at', updatedAt: 'created_at')]", $timestamps));
+            file_put_contents($file, str_replace('created_at', 'recorded_at', str_replace('updated_at', 'changed_at', $timestamps)));
             self::assertNotSame(hash('sha256', $managed['code']), hash('sha256', $compiler->compile([$file])['code']));
             self::assertFalse(class_exists('ModelIdentity\User', false));
         } finally {
@@ -311,7 +327,9 @@ PHP;
         }
     }
 
-    /** 验证旧模型配置始终给出明确迁移诊断。 */
+    /**
+     * 验证旧模型配置始终给出明确迁移诊断。
+     */
     public function testLegacyConfigurationAlwaysReportsMigration(): void
     {
         $this->expectException(\RuntimeException::class);
@@ -319,7 +337,9 @@ PHP;
         (new ModelCompiler())->assertConfiguration(['models' => []]);
     }
 
-    /** 验证已安装依赖中的模型应用源码适配，依赖变化后开发缓存失效。 */
+    /**
+     * 验证已安装依赖中的模型应用源码适配，依赖变化后开发缓存失效。
+     */
     public function testInstalledDependencyModelsUseAdaptationsAndInvalidateDevelopmentCache(): void
     {
         $root = dirname(__DIR__, 2);
@@ -335,10 +355,9 @@ PHP;
 declare(strict_types=1);
 namespace DependencyModels;
 use Type\Orm\Model;
-use Type\Orm\Attribute\Table;
-#[Table('users')]
 final class User extends Model {
-    public int $id;
+    protected string $table = 'users';
+    protected array $schema = ['id' => 'int'];
     public static function marker(): string { return 'original'; }
 }
 PHP;

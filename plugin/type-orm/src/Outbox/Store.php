@@ -11,7 +11,9 @@ use Type\Orm\Migration\Migration;
 use Type\Orm\ModelException;
 use Type\Orm\SqlDialect;
 
-/** 业务事务中的消息意图及投递凭据；未知效果保留对账，不承诺跨系统原子事务。 */
+/**
+ * 业务事务中的消息意图及投递凭据；未知效果保留对账，不承诺跨系统原子事务。
+ */
 final class Store
 {
     private string $table;
@@ -37,19 +39,15 @@ final class Store
         $this->retentionSeconds = $retentionSeconds;
     }
 
-    /** 返回建表迁移供应用加入完整计划，不直接修改数据库。 */
+    /**
+     * 返回建表迁移供应用加入完整计划，不直接修改数据库。
+     */
     public function migration(string $driver, string $version): Migration
     {
         if (!in_array($driver, ['mysql', 'pgsql', 'sqlite'], true)) {
             throw new DatabaseException('Outbox 驱动不支持');
         }
-        $engine = $driver === 'mysql' ? ' ENGINE=InnoDB' : '';
-        return new Migration($version, '创建事务消息意图与消费凭据', [
-            'CREATE TABLE ' . $this->table . ' (id VARCHAR(128) PRIMARY KEY, topic VARCHAR(128) NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL, context TEXT NOT NULL, '
-                . 'fingerprint VARCHAR(64) NOT NULL, state VARCHAR(16) NOT NULL, token VARCHAR(64) NOT NULL, lease_until BIGINT NOT NULL, attempts INTEGER NOT NULL, '
-                . 'created_at BIGINT NOT NULL, published_at BIGINT NULL, accepted_receipt TEXT NULL, consumed_receipt TEXT NULL, consumed_at BIGINT NULL, replay_reason TEXT NULL)' . $engine,
-            'CREATE INDEX ' . $this->table . '_pending ON ' . $this->table . ' (state, lease_until, created_at)',
-        ], $driver !== 'mysql');
+        return (new OutboxMigration($version, $this->table))->compile($driver);
     }
 
     /**
@@ -132,7 +130,9 @@ final class Store
         }, $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
     }
 
-    /** 在事务外以有效 token 和未过期租约登记实际接受凭据，失去领取权返回 false。 */
+    /**
+     * 在事务外以有效 token 和未过期租约登记实际接受凭据，失去领取权返回 false。
+     */
     public function accepted(Connection $connection, Record $record, string $receipt): bool
     {
         if ($connection->transactionDepth() !== 0 || $receipt === '' || strlen($receipt) > 2000) {
@@ -146,13 +146,17 @@ final class Store
             ->update(['state' => 'published', 'accepted_receipt' => $receipt, 'published_at' => $now, 'lease_until' => 0, 'token' => '']) === 1;
     }
 
-    /** 把消费凭据与业务效果放在同一活动事务登记，已有凭据返回 false。 */
+    /**
+     * 把消费凭据与业务效果放在同一活动事务登记，已有凭据返回 false。
+     */
     public function consumed(string $id, string $receipt, string $database = 'default'): bool
     {
         return $this->consumedUsing($this->transactionConnection($database), $id, $receipt);
     }
 
-    /** 基础设施已有显式事务连接时登记消费凭据，与本连接的业务效果共同提交。 */
+    /**
+     * 基础设施已有显式事务连接时登记消费凭据，与本连接的业务效果共同提交。
+     */
     public function consumedUsing(Connection $connection, string $id, string $receipt): bool
     {
         if ($connection->transactionDepth() === 0 || $receipt === '' || strlen($receipt) > 2000) {
@@ -171,7 +175,9 @@ final class Store
         return $connection->table($this->table)->where('id', '=', $id)->first();
     }
 
-    /** 凭人工说明重放保留期内的已发布记录，保留原消息 ID 供目标幂等。 */
+    /**
+     * 凭人工说明重放保留期内的已发布记录，保留原消息 ID 供目标幂等。
+     */
     public function replay(Connection $connection, string $id, string $reason): bool
     {
         if (trim($reason) === '' || strlen($reason) > 2000) {
@@ -182,7 +188,9 @@ final class Store
             ->update(['state' => 'pending', 'replay_reason' => $reason, 'lease_until' => 0]) === 1;
     }
 
-    /** 只删除已发布、已消费且超过重放窗口的记录；未知效果保留对账。 */
+    /**
+     * 只删除已发布、已消费且超过重放窗口的记录；未知效果保留对账。
+     */
     public function collect(Connection $connection, int $limit = 100): int
     {
         $this->limit($limit);
@@ -205,7 +213,9 @@ final class Store
         return (int)$connection->query($sql)[0]['value'];
     }
 
-    /** 先观察已有事务，拒绝时不建立会话、不另借默认来源。 */
+    /**
+     * 先观察已有事务，拒绝时不建立会话、不另借默认来源。
+     */
     private function transactionConnection(string $database): Connection
     {
         if (!preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $database)) {

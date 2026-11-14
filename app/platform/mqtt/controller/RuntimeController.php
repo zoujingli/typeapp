@@ -18,13 +18,16 @@ use Type\Core\Http\RequestBody;
 use Type\Orm\Connection;
 use Type\Orm\Db;
 use Type\Runtime\ExecutionScope;
-use Type\Validate\Field;
 use Type\Validate\Input;
 
-/** 监听、I/O 与节点证书路径的校验保存；页面不执行重启，生效观察来自节点上报的加载身份。 */
+/**
+ * 监听、I/O 与节点证书路径的校验保存；页面不执行重启，生效观察来自节点上报的加载身份。
+ */
 final class RuntimeController
 {
-    /** 保存请求处理所需的数据库、身份服务和响应工厂；连接在请求作用域中借用。 */
+    /**
+     * 保存请求处理所需的数据库、身份服务和响应工厂；连接在请求作用域中借用。
+     */
     public function __construct(private Factory $messages) {}
 
     /**
@@ -104,8 +107,14 @@ final class RuntimeController
             if (array_diff(array_keys($input->source('query')), ['page', 'per_page']) !== []) {
                 throw new HttpError(400, 'broker_runtime_query_invalid');
             }
-            $query = \_vali(['page' => Field::integer()->cast()->range(1, 100000)->from('query'),
-                'per_page' => Field::integer()->cast()->range(1, 100)->from('query')], $input);
+            $query = \_vali([
+                'page.default' => 1,
+                'page.integer' => '页码不正确',
+                'page.between:1,100000' => '页码超出范围',
+                'per_page.default' => 20,
+                'per_page.integer' => '每页数量不正确',
+                'per_page.between:1,100' => '每页数量超出范围',
+            ], $input->source('query'));
             $result = RuntimeService::revisions($connection, $parameters['id'] ?? '', $query['page'] ?? 1, $query['per_page'] ?? 20);
             $this->audit($connection, $request, $context, 'broker.runtime.read', $parameters['id'] ?? 'revisions', $result, 'success', 'metadata_read');
             return $this->response($result);
@@ -115,7 +124,9 @@ final class RuntimeController
         }
     }
 
-    /** 核对写权限后重试运行配置版本，并记录审计；成功响应不代表全部节点已生效。 */
+    /**
+     * 核对写权限后重试运行配置版本，并记录审计；成功响应不代表全部节点已生效。
+     */
     #[Route('/platform/broker/runtime/revisions/{id}/retry', methods: ['POST'], name: 'platform.broker-runtime-retry', middleware: ['platform.auth'])]
     public function retry(ServerRequestInterface $request): ResponseInterface
     {
@@ -124,7 +135,9 @@ final class RuntimeController
         });
     }
 
-    /** 将获授权的回退交给运行配置服务并审计，不在 HTTP 请求中重启节点。 */
+    /**
+     * 将获授权的回退交给运行配置服务并审计，不在 HTTP 请求中重启节点。
+     */
     #[Route('/platform/broker/runtime/revisions/{id}/rollback', methods: ['POST'], name: 'platform.broker-runtime-rollback', middleware: ['platform.auth'])]
     public function rollback(ServerRequestInterface $request): ResponseInterface
     {
@@ -226,7 +239,9 @@ final class RuntimeController
         return Db::connection('default', true);
     }
 
-    /** @param array<string, mixed> $data */
+    /**
+     * @param array<string, mixed> $data
+     */
     private function response(array $data, int $status = 200): ResponseInterface
     {
         return $this->messages->createResponse($status)->withHeader('Content-Type', 'application/json; charset=utf-8')

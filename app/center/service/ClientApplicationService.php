@@ -11,6 +11,9 @@ use app\common\service\RoleService;
 use app\platform\model\ApplicationDirectory;
 use app\platform\model\DeviceDirectory;
 use app\platform\model\Tenant;
+use app\platform\mqtt\model\AccessCredential;
+use app\platform\mqtt\model\AccessPrincipal;
+use app\platform\mqtt\model\AccessRevision;
 use app\platform\mqtt\service\AccessService;
 use app\platform\mqtt\service\ResourceObservations;
 use Type\Core\Http\HttpError;
@@ -20,12 +23,16 @@ use Type\Orm\Connection;
 use Type\Orm\Db;
 use Type\Runtime\ExecutionScope;
 
-/** 接入应用与密钥的业务所有者；人员授权、应用状态和设备通信权限分别执行。 */
+/**
+ * 接入应用与密钥的业务所有者；人员授权、应用状态和设备通信权限分别执行。
+ */
 final class ClientApplicationService
 {
     private const FIELDS = ['id', 'tenant_id', 'name', 'enabled', 'key_version', 'access_version', 'recovery_verified', 'version', 'created_at', 'updated_at'];
 
-    /** @return array<string, mixed> 当前范围的有界目录；秘密与请求摘要不进入普通响应。 */
+    /**
+     * @return array<string, mixed> 当前范围的有界目录；秘密与请求摘要不进入普通响应。
+     */
     public function listing(Identity $identity, string $realm, string $tenantId, int $page, int $perPage): array
     {
         $context = self::context($identity, $realm, $tenantId);
@@ -56,7 +63,9 @@ final class ClientApplicationService
         return ['items' => $items, 'total' => $result->total(), 'page' => $page, 'per_page' => $perPage, 'context' => $context];
     }
 
-    /** 读取真实密钥状态和发布回执；GET 不更改凭据、应用版本或在线观察。 */
+    /**
+     * 读取真实密钥状态和发布回执；GET 不更改凭据、应用版本或在线观察。
+     */
     public function detail(Identity $identity, string $realm, string $tenantId, string $id): array
     {
         $context = self::context($identity, $realm, $tenantId);
@@ -92,8 +101,8 @@ final class ClientApplicationService
             }
             $connection = Db::connection('default', true);
             // 协议身份共享主体索引；即使用户名分域，也不能复用另一设备的主体 ID。
-            if ($connection->table('platform_mqtt_access_principal')->where('id', '=', $data['id'])->first() !== null
-                || DeviceDirectory::query()->master()->onConnection($connection)->where('id', '=', $data['id'])->first() !== null) {
+            if (AccessPrincipal::query()->master()->onConnection($connection)->where('id', '=', $data['id'])->exists()
+                || DeviceDirectory::query()->master()->onConnection($connection)->where('id', '=', $data['id'])->exists()) {
                 throw new HttpError(409, 'application_request_conflict');
             }
             $version = AccessService::currentVersion($connection);
@@ -108,9 +117,9 @@ final class ClientApplicationService
                 $version,
                 static function (Connection $transaction) use ($current, $realm, $tenantId, $data, $hash, $secret, $credentialId, $version): void {
                     $now = time();
-                    $transaction->table('platform_mqtt_access_principal')->insert(['id' => $data['id'], 'tenant_id' => $tenantId,
+                    AccessPrincipal::create(['id' => $data['id'], 'tenant_id' => $tenantId,
                         'name' => $data['name'], 'enabled' => 1, 'created_at' => $now, 'updated_at' => $now]);
-                    $transaction->table('platform_mqtt_access_credential')->insert(['id' => $credentialId, 'principal_id' => $data['id'],
+                    AccessCredential::create(['id' => $credentialId, 'principal_id' => $data['id'],
                         'login' => 'app:' . $data['id'], 'secret_hash' => hash('sha256', $secret), 'credential_version' => 1,
                         'status' => 'active', 'created_at' => $now, 'revoked_at' => null]);
                     ClientApplication::create(['id' => $data['id'], 'name' => $data['name'], 'enabled' => true, 'credential_id' => $credentialId,
@@ -149,14 +158,14 @@ final class ClientApplicationService
                 throw new HttpError(409, 'application_recovery_required');
             }
             $connection = Db::connection('default', true);
-            $stored = $connection->table('platform_mqtt_access_credential')->where('id', '=', $model->getCredentialId())->where('principal_id', '=', $id)->first();
-            if ($stored === null || (int)$stored['credential_version'] !== $model->getKeyVersion()) {
+            $stored = AccessCredential::query()->master()->onConnection($connection)->where('id', '=', $model->getCredentialId())->where('principal_id', '=', $id)->first();
+            if ($stored === null || $stored->credential_version !== $model->getKeyVersion()) {
                 throw new HttpError(409, 'application_recovery_required');
             }
             if (in_array($action, ['rotate', 'issue'], true) && !$model->getEnabled()) {
                 throw new HttpError(409, 'application_disabled');
             }
-            if ((in_array($action, ['rotate', 'revoke'], true) && $stored['status'] !== 'active') || ($action === 'issue' && $stored['status'] !== 'revoked')) {
+            if ((in_array($action, ['rotate', 'revoke'], true) && $stored->status !== 'active') || ($action === 'issue' && $stored->status !== 'revoked')) {
                 throw new HttpError(409, 'application_key_unavailable');
             }
             $secret = in_array($action, ['rotate', 'issue'], true) ? bin2hex(random_bytes(32)) : null;
@@ -180,9 +189,9 @@ final class ClientApplicationService
                         if ($secret !== null) {
                             $changes['secret_hash'] = hash('sha256', $secret);
                         }
-                        $transaction->table('platform_mqtt_access_credential')->where('id', '=', $model->getCredentialId())->where('principal_id', '=', $id)->update($changes);
+                        AccessCredential::query()->master()->onConnection($transaction)->where('id', '=', $model->getCredentialId())->where('principal_id', '=', $id)->update($changes);
                     }
-                    $transaction->table('platform_mqtt_access_principal')->where('id', '=', $id)->where('tenant_id', '=', $tenantId)
+                    AccessPrincipal::query()->master()->onConnection($transaction)->where('id', '=', $id)->where('tenant_id', '=', $tenantId)
                         ->update(['name' => $model->getName(), 'enabled' => $model->getEnabled() ? 1 : 0, 'updated_at' => time()]);
                     $model->setAccessVersion($version + 1);
                     $model->save();
@@ -216,13 +225,17 @@ final class ClientApplicationService
         return self::accessCurrent($connection, $request);
     }
 
-    /** @internal 已在可信租户范围读取的应用，只投影公开状态及真实发布回执。 */
+    /**
+     * @internal 已在可信租户范围读取的应用，只投影公开状态及真实发布回执。
+     */
     public static function publicProjection(ClientApplication $model): array
     {
         return self::project($model->project(self::FIELDS) + ['credential_id' => $model->credential_id]);
     }
 
-    /** 应用身份、客户状态和当前设备授权逐动作核对，无匹配授权默认拒绝 Topic。 */
+    /**
+     * 应用身份、客户状态和当前设备授权逐动作核对，无匹配授权默认拒绝 Topic。
+     */
     private static function accessCurrent(Connection $connection, array $request): array
     {
         $username = (string)($request['username'] ?? '');
@@ -231,8 +244,8 @@ final class ClientApplicationService
         $application = $id === '' ? null : ApplicationDirectory::query()->master()->onConnection($connection)->find($id);
         $row = $application === null ? null : $application->project(['id', 'tenant_id', 'name', 'enabled', 'key_version', 'access_version', 'access_started', 'recovery_verified'])
             + ['credential_id' => $application->getCredentialId()];
-        $credential = $row === null ? null : $connection->table('platform_mqtt_access_credential')->where('id', '=', $row['credential_id'])->where('principal_id', '=', $id)->first();
-        $principal = $row === null ? null : $connection->table('platform_mqtt_access_principal')->where('id', '=', $id)->where('tenant_id', '=', $row['tenant_id'])->first();
+        $credential = $row === null ? null : AccessCredential::query()->master()->onConnection($connection)->where('id', '=', $row['credential_id'])->where('principal_id', '=', $id)->first();
+        $principal = $row === null ? null : AccessPrincipal::query()->master()->onConnection($connection)->where('id', '=', $id)->where('tenant_id', '=', $row['tenant_id'])->first();
         if ($request['action'] === 'connected') {
             // CONNACK 已发送后才产生观察；期间可发生换证，旧连接事实不能令整个 Broker 故障。
             // 主体、凭据标识与历史代次必须仍对应本应用，授权有效性由每次动作及撤权流程检查。
@@ -247,13 +260,13 @@ final class ClientApplicationService
             return ['allowed' => true];
         }
         $allowed = $row !== null && $credential !== null && $principal !== null && $request['client_id'] === $username
-            && (int)$row['enabled'] === 1 && (int)$row['recovery_verified'] === 1 && (int)$principal['enabled'] === 1
-            && (int)$principal['recovery_verified'] === 1 && (int)$credential['recovery_verified'] === 1
-            && $credential['status'] === 'active' && $credential['login'] === $username && (int)$credential['credential_version'] === (int)$row['key_version']
+            && (int)$row['enabled'] === 1 && (int)$row['recovery_verified'] === 1 && $principal->enabled === 1
+            && $principal->recovery_verified === 1 && $credential->recovery_verified === 1
+            && $credential->status === 'active' && $credential->login === $username && $credential->credential_version === (int)$row['key_version']
             && (($tenant = Tenant::query()->master()->onConnection($connection)->find($row['tenant_id'])) !== null && $tenant->getEnabled());
-        $identity = $allowed ? new AccessIdentity($id, $credential['id'], (int)$row['key_version']) : null;
+        $identity = $allowed ? new AccessIdentity($id, $credential->id, (int)$row['key_version']) : null;
         if ($allowed && $request['action'] === 'authenticate') {
-            $allowed = hash_equals($credential['secret_hash'], (string)$request['verifier']) && $request['secure'] && $request['protocol'] === 5
+            $allowed = hash_equals($credential->secret_hash, (string)$request['verifier']) && $request['secure'] && $request['protocol'] === 5
                 && $request['keep_alive'] === 30 && $request['expiry'] === 86400;
             if ($allowed && (int)$row['access_started'] !== 1) {
                 // 认证事实不是业务编辑，不推进表单版本；它在发出身份结论前持久保存。
@@ -289,7 +302,9 @@ final class ClientApplicationService
             ? ['access_identity' => $identity->data(), 'resource_scope' => 'center:' . $row['tenant_id']] : []);
     }
 
-    /** @param \Closure(Identity):array<string,mixed> $operation 已验证人员来源和租户的事务业务。 */
+    /**
+     * @param \Closure(Identity):array<string,mixed> $operation 已验证人员来源和租户的事务业务。
+     */
     private function write(Identity $identity, string $realm, string $tenantId, string $id, string $action, \Closure $operation): array
     {
         $permission = in_array($action, ['rotate', 'revoke', 'issue'], true) ? 'keys' : $action;
@@ -326,7 +341,9 @@ final class ClientApplicationService
         }
     }
 
-    /** @return array<string,mixed> 当前人员权限只影响管理入口，不成为应用通信身份。 */
+    /**
+     * @return array<string,mixed> 当前人员权限只影响管理入口，不成为应用通信身份。
+     */
     private static function context(Identity $identity, string $realm, string $tenantId): array
     {
         $context = RoleService::readContext($identity, $realm, $realm === 'platform' ? '' : $tenantId, ($realm === 'system' ? 'center' : 'platform') . '.applications.read');
@@ -334,19 +351,21 @@ final class ClientApplicationService
         return $context;
     }
 
-    /** 凭据仅投影状态与代次，发布状态取真实节点回执，不按 enabled 猜测网络隔离结果。 */
+    /**
+     * 凭据仅投影状态与代次，发布状态取真实节点回执，不按 enabled 猜测网络隔离结果。
+     */
     private static function project(array $row): array
     {
         // 发布回执和凭据状态属于协议基础设施投影，业务应用实体本身仍由 ClientApplication 管理。
         $connection = Db::connection('default', true);
-        $credential = $connection->table('platform_mqtt_access_credential')->where('id', '=', $row['credential_id'])->where('principal_id', '=', $row['id'])->first();
-        $publication = $connection->table('platform_mqtt_access_revision')->select(['id'])->where('version', '=', (int)$row['access_version'])->where('tenant_id', '=', $row['tenant_id'])->first();
+        $credential = AccessCredential::query()->master()->where('id', '=', $row['credential_id'])->where('principal_id', '=', $row['id'])->first();
+        $publication = AccessRevision::query()->master()->select(['id'])->where('version', '=', (int)$row['access_version'])->where('tenant_id', '=', $row['tenant_id'])->first();
         if ($publication === null) {
             throw new \RuntimeException('application_publication_missing');
         }
-        $row['key'] = ['version' => (int)$row['key_version'], 'active' => $credential !== null && $credential['status'] === 'active'
-            && (int)$credential['credential_version'] === (int)$row['key_version'] && (int)$credential['recovery_verified'] === 1];
-        $row['publication'] = AccessService::revisions($connection, $row['tenant_id'], $publication['id'], 1, 1)['item'];
+        $row['key'] = ['version' => (int)$row['key_version'], 'active' => $credential !== null && $credential->status === 'active'
+            && $credential->credential_version === (int)$row['key_version'] && $credential->recovery_verified === 1];
+        $row['publication'] = AccessService::revisions($connection, $row['tenant_id'], $publication->id, 1, 1)['item'];
         unset($row['credential_id'], $row['key_version'], $row['access_version']);
         foreach (['version', 'created_at', 'updated_at'] as $field) {
             $row[$field] = (int)$row[$field];
@@ -356,7 +375,9 @@ final class ClientApplicationService
         return $row;
     }
 
-    /** 一份应用固定一个受管 MQTT Client ID，多个外部系统应分别建应用而非共享会话所有权。 */
+    /**
+     * 一份应用固定一个受管 MQTT Client ID，多个外部系统应分别建应用而非共享会话所有权。
+     */
     private static function credential(ClientApplication $model, string $secret): array
     {
         return ['client_id' => 'app:' . $model->getId(), 'username' => 'app:' . $model->getId(), 'password' => $secret,

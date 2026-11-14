@@ -44,7 +44,7 @@ NOTICES.md                         依赖材料索引与覆盖状态的阅读入
 ./run verify-runtime
 ```
 
-后续命令取决于包内应用：通用模板执行 `./run migrate run` 后 `./run serve`；物联中心在空库执行带账号参数的 `./run app:install`，随后启动。人员参数与受控口令环境见[应用初始化](typeapp.md#准备与初始化)，不能对物联中心使用模板迁移命令。
+后续命令取决于包内应用：通用模板执行 `./run migrate run` 后 `./run serve`；物联中心在空库执行带账号参数的 `./run app:install`，随后可用同一 `./run migrate run/up` 应用后续版本。人员参数与受控口令环境见[应用初始化](typeapp.md#准备与初始化)。
 
 Windows使用`run.cmd`。将`config/env.example`复制为`.env`并填入实际部署值，或通过外部环境/APP_BASE_PATH指定配置。秘密、数据库、日志与上传数据由部署环境维护，不回写不可变发布载荷。
 

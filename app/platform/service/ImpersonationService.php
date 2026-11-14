@@ -19,12 +19,19 @@ use Type\Core\Http\Message\Uri;
 use Type\Orm\Db;
 use Type\Runtime\ExecutionScope;
 
-/** 平台到客户入口的短期一次性交接；原始平台令牌不离开平台工作区。 */
+/**
+ * 平台到客户入口的短期一次性交接；原始平台令牌不离开平台工作区。
+ */
 final class ImpersonationService
 {
+    /**
+     * 持有启动配置，签发交接码时读取登记入口。
+     */
     public function __construct(private ApplicationContext $context) {}
 
-    /** 目标由登记入口计算，不能提交任意跳转地址；同一来源最多十份待交接记录。 */
+    /**
+     * 目标由登记入口计算，不能提交任意跳转地址；同一来源最多十份待交接记录。
+     */
     public function issue(Identity $identity, string $tenantId, array $data): array
     {
         return RoleService::authorized($identity, null, 'platform.tenants.impersonate', function (Identity $actor, array $permissions) use ($tenantId, $data): array {
@@ -49,7 +56,7 @@ final class ImpersonationService
             $attributes = $actor->attributes();
             $now = time();
             $rows = PlatformHandoff::query()->master()->where('source_session_id', '=', $attributes['session_id'])
-                ->orderBy('created_at')->orderBy('code_hash')->limit(10)->get();
+                ->order('created_at')->order('code_hash')->limit(10)->get();
             foreach ($rows as $index => $row) {
                 if ((int)$row->expires_at <= $now || $row->consumed_at !== null || (count($rows) >= 10 && $index === 0)) {
                     $row->delete();
@@ -66,7 +73,9 @@ final class ImpersonationService
         }, 'platform', 'platform');
     }
 
-    /** 消费与创建会话原子提交；来源撤销、目标版本变化、地址错配及重放均拒绝。 */
+    /**
+     * 消费与创建会话原子提交；来源撤销、目标版本变化、地址错配及重放均拒绝。
+     */
     public function consume(ServerRequestInterface $request, string $code): array
     {
         $tenantId = TenantContext::id($request);
@@ -97,7 +106,9 @@ final class ImpersonationService
         }, 'default', $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
     }
 
-    /** 只使用部署配置的公共来源，固定路径或登记子域名二选一。 */
+    /**
+     * 只使用部署配置的公共来源，固定路径或登记子域名二选一。
+     */
     private function target(Tenant $tenant, string $entry): string
     {
         $origin = rtrim($this->context->settings()->text('app.tenant.public_origin'), '/');

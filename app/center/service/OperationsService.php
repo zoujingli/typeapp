@@ -12,7 +12,9 @@ use Type\Mqtt\CommitResult;
 use Type\Mqtt\PendingCommit;
 use Type\Orm\Connection;
 
-/** 有界运行观察的所有者；采样事实、同步持久证明、设备在线与页面读取失败分别处理。 */
+/**
+ * 有界运行观察的所有者；采样事实、同步持久证明、设备在线与页面读取失败分别处理。
+ */
 final class OperationsService
 {
     private static bool $persistentQuarantined = false;
@@ -48,13 +50,15 @@ final class OperationsService
         CenterRuntimeMetric::recordObservation($connection, $kind, $node, $run, time(), $encoded, $initial);
     }
 
-    /** 平台运行节点独立授权；只返回数值元数据，HTTP存活与同步持久依赖就绪分别展示。 */
+    /**
+     * 平台运行节点独立授权；只返回数值元数据，HTTP存活与同步持久依赖就绪分别展示。
+     */
     public static function platform(Connection $connection, Identity $identity, string $mqttCommand = '[]'): array
     {
         $access = RoleService::readContext($identity, 'platform', '', 'operations.read');
         $now = time();
         $nodes = [];
-        foreach (CenterRuntimeMetric::query()->master()->onConnection($connection)->where('kind', '=', 'broker')->orderBy('node_id')->limit(64)->get() as $row) {
+        foreach (CenterRuntimeMetric::query()->master()->onConnection($connection)->where('kind', '=', 'broker')->order('node_id')->limit(64)->get() as $row) {
             $metrics = json_decode((string)$row->get('metrics_json'), true, 16, JSON_THROW_ON_ERROR);
             $previousValue = $row->get('previous_json');
             $previous = $previousValue === null ? null : json_decode((string)$previousValue, true, 16, JSON_THROW_ON_ERROR);
@@ -94,7 +98,9 @@ final class OperationsService
             'coverage' => 'observed_instances_only', 'store' => $persistent];
     }
 
-    /** 客户仅取得当前租户的有界设备页；连接状态与授权完成情况分别展示，不解释载荷。 */
+    /**
+     * 客户仅取得当前租户的有界设备页；连接状态与授权完成情况分别展示，不解释载荷。
+     */
     public static function tenant(Connection $connection, Identity $identity, string $tenantId, int $page, int $perPage, array $filters): array
     {
         $access = RoleService::readContext($identity, 'system', $tenantId, 'operations.read');

@@ -7,7 +7,9 @@ namespace Type\Orm;
 use PDO;
 use Type\Runtime\ReusableResource;
 
-/** @internal 原生 PDO 句柄封装，不经 Connection 公共接口向外泄露。 */
+/**
+ * @internal 原生 PDO 句柄封装，不经 Connection 公共接口向外泄露。
+ */
 final class PdoSession implements ReusableResource
 {
     private ?\PDO $pdo;
@@ -34,7 +36,9 @@ final class PdoSession implements ReusableResource
 
     private ?bool $mysqlBuffered = null;
 
-    /** 建立并拥有物理 PDO；构造失败不向资源池交付可借用会话。 */
+    /**
+     * 建立并拥有物理 PDO；构造失败不向资源池交付可借用会话。
+     */
     public function __construct(Driver $driver)
     {
         $this->driver = $driver;
@@ -73,13 +77,26 @@ final class PdoSession implements ReusableResource
         }
     }
 
-    /** 返回当前物理会话所属驱动，不改变选路。 */
+    /**
+     * 返回当前物理会话所属驱动，不改变选路。
+     */
     public function driverName(): string
     {
         return $this->driver->name();
     }
 
-    /** 在无活动结果流时读取服务器版本。 */
+    /**
+     * 返回建立本会话的驱动，供迁移读取结构和初始化数据。
+     */
+    public function driver(): Driver
+    {
+        $this->assertIdle();
+        return $this->driver;
+    }
+
+    /**
+     * 在无活动结果流时读取服务器版本。
+     */
     public function serverVersion(): string
     {
         $this->assertIdle();
@@ -116,14 +133,18 @@ final class PdoSession implements ReusableResource
         }
     }
 
-    /** 读取当前物理连接生成的主键，活动流期间拒绝额外操作。 */
+    /**
+     * 读取当前物理连接生成的主键，活动流期间拒绝额外操作。
+     */
     public function lastInsertId(): string
     {
         $this->assertIdle();
         return (string)$this->connection()->lastInsertId();
     }
 
-    /** 拒绝在未关闭结果流时插入其他数据库操作。 */
+    /**
+     * 拒绝在未关闭结果流时插入其他数据库操作。
+     */
     public function assertIdle(): void
     {
         if ($this->streamId !== 0) {
@@ -210,13 +231,17 @@ final class PdoSession implements ReusableResource
         }
     }
 
-    /** 核对游标身份是否仍是本会话当前活动流。 */
+    /**
+     * 核对游标身份是否仍是本会话当前活动流。
+     */
     public function streamActive(int $id): bool
     {
         return $id !== 0 && $this->streamId === $id;
     }
 
-    /** 关闭语句与流自有事务，恢复 MySQL 缓冲选项；清理失败隔离物理连接。 */
+    /**
+     * 关闭语句与流自有事务，恢复 MySQL 缓冲选项；清理失败隔离物理连接。
+     */
     public function closeStream(int $id): void
     {
         if (!$this->streamActive($id)) {
@@ -250,7 +275,9 @@ final class PdoSession implements ReusableResource
         }
     }
 
-    /** 开始最外层事务；immediate 只允许 SQLite，嵌套由上层保存点负责。 */
+    /**
+     * 开始最外层事务；immediate 只允许 SQLite，嵌套由上层保存点负责。
+     */
     public function begin(string $mode = 'default'): void
     {
         $this->assertIdle();
@@ -277,26 +304,34 @@ final class PdoSession implements ReusableResource
         }
     }
 
-    /** 建立 Connection 生成的受信保存点名；不得传入外部任意文本。 */
+    /**
+     * 建立 Connection 生成的受信保存点名；不得传入外部任意文本。
+     */
     public function savepoint(string $name): void
     {
         $this->execute('SAVEPOINT ' . $name, []);
     }
 
-    /** 释放上层生成的受信保存点，成功不代表外层事务已提交。 */
+    /**
+     * 释放上层生成的受信保存点，成功不代表外层事务已提交。
+     */
     public function releaseSavepoint(string $name): void
     {
         $this->execute('RELEASE SAVEPOINT ' . $name, []);
     }
 
-    /** 回滚并释放指定保存点，不撤销更外层的事务。 */
+    /**
+     * 回滚并释放指定保存点，不撤销更外层的事务。
+     */
     public function rollbackTo(string $name): void
     {
         $this->execute('ROLLBACK TO SAVEPOINT ' . $name, []);
         $this->releaseSavepoint($name);
     }
 
-    /** 确认最外层提交；失败使会话退役并保留未知结果供上层处理。 */
+    /**
+     * 确认最外层提交；失败使会话退役并保留未知结果供上层处理。
+     */
     public function commit(): void
     {
         $this->assertIdle();
@@ -311,7 +346,9 @@ final class PdoSession implements ReusableResource
         }
     }
 
-    /** 关闭流并回滚活动事务；没有活动事务时返回 false。 */
+    /**
+     * 关闭流并回滚活动事务；没有活动事务时返回 false。
+     */
     public function rollback(): bool
     {
         $this->closeStream($this->streamId);
@@ -321,13 +358,17 @@ final class PdoSession implements ReusableResource
         return false;
     }
 
-    /** 禁止会话重新入池，当前持有者仍负责事务和资源收尾。 */
+    /**
+     * 禁止会话重新入池，当前持有者仍负责事务和资源收尾。
+     */
     public function retire(): void
     {
         $this->reusable = false;
     }
 
-    /** 回滚残余状态并由驱动证明会话干净；不能证明时释放 PDO 并返回 false。 */
+    /**
+     * 回滚残余状态并由驱动证明会话干净；不能证明时释放 PDO 并返回 false。
+     */
     public function reset(): bool
     {
         $clean = false;
@@ -345,7 +386,9 @@ final class PdoSession implements ReusableResource
         }
     }
 
-    /** 池丢弃会话时关闭游标与 PDO；返回才表示底层句柄已释放。 */
+    /**
+     * 池丢弃会话时关闭游标与 PDO；返回才表示底层句柄已释放。
+     */
     public function close(): void
     {
         try {
@@ -355,7 +398,9 @@ final class PdoSession implements ReusableResource
         }
     }
 
-    /** 保证物理会话已建立，供借出后及取消检查之前的初始化使用。 */
+    /**
+     * 保证物理会话已建立，供借出后及取消检查之前的初始化使用。
+     */
     public function initialize(): void
     {
         $this->connection();

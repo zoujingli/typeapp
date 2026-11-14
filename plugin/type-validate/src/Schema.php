@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Type\Validate;
 
-/** 声明本身是普通 PHP，可与业务 DTO 工厂一起静态编译。 */
+/**
+ * 声明本身是普通 PHP，可与业务 DTO 工厂一起静态编译。
+ */
 final class Schema
 {
     private array $fields;
@@ -49,6 +51,7 @@ final class Schema
     {
         $values = [];
         $errors = [];
+        $messages = [];
         foreach ($this->fields as $name => $field) {
             $source = $input->source($field->sourceName());
             $key = $field->inputKey($name);
@@ -56,12 +59,13 @@ final class Schema
             $result = $field->validate($provided ? $source[$key] : null, $provided, $input, $scenario, $patch, $name);
             if ($result['errors'] !== []) {
                 $errors = array_merge($errors, $result['errors']);
+                $messages = array_merge($messages, $result['messages']);
             } elseif ($result['provided']) {
                 $values[$name] = $result['value'];
             }
         }
         if ($errors !== []) {
-            throw new ValidationException($errors);
+            throw new ValidationException($errors, 422, 'validation_failed', $messages);
         }
         return new Data($values);
     }

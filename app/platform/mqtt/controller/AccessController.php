@@ -18,13 +18,16 @@ use Type\Core\Http\RequestBody;
 use Type\Orm\Connection;
 use Type\Orm\Db;
 use Type\Runtime\ExecutionScope;
-use Type\Validate\Field;
 use Type\Validate\Input;
 
-/** 接入主体、受信 CA、客户端证书绑定、签名 CRL、平台吊销、换证预览与 Topic 授权的版本化发布；保存成功不等于集群生效。 */
+/**
+ * 接入主体、受信 CA、客户端证书绑定、签名 CRL、平台吊销、换证预览与 Topic 授权的版本化发布；保存成功不等于集群生效。
+ */
 final class AccessController
 {
-    /** 请求连接仍归当前执行作用域持有；身份服务只用于核对平台管理员。 */
+    /**
+     * 请求连接仍归当前执行作用域持有；身份服务只用于核对平台管理员。
+     */
     public function __construct(private Factory $messages) {}
 
     /**
@@ -46,9 +49,16 @@ final class AccessController
                 if (array_diff(array_keys($input->source('query')), ['name', 'page', 'per_page']) !== []) {
                     throw new HttpError(400, 'broker_access_query_invalid');
                 }
-                $query = \_vali(['name' => Field::text()->length(0, 100)->from('query'),
-                    'page' => Field::integer()->cast()->range(1, 100000)->from('query'),
-                    'per_page' => Field::integer()->cast()->range(1, 100)->from('query')], $input);
+                $query = \_vali([
+                    'name.default' => '',
+                    'name.length:0,100' => '名称长度不正确',
+                    'page.default' => 1,
+                    'page.integer' => '页码不正确',
+                    'page.between:1,100000' => '页码超出范围',
+                    'per_page.default' => 20,
+                    'per_page.integer' => '每页数量不正确',
+                    'per_page.between:1,100' => '每页数量超出范围',
+                ], $input->source('query'));
                 $result = AccessService::principals($connection, $context['tenant_id'], $parameters['id'] ?? '', $query['page'] ?? 1, $query['per_page'] ?? 20, $query['name'] ?? '');
                 $this->audit($connection, $request, $context, 'broker.access.read', $parameters['id'] ?? 'principals', $result, 'success', 'metadata_read');
                 return $this->response($result);
@@ -244,7 +254,9 @@ final class AccessController
         }
     }
 
-    /** 只读版本列表与节点生效摘要；不含快照秘密。 */
+    /**
+     * 只读版本列表与节点生效摘要；不含快照秘密。
+     */
     #[Route('/platform/broker/access/revisions', name: 'platform.broker-access-revisions', middleware: ['platform.auth'])]
     #[Route('/platform/broker/access/revisions/{id}', name: 'platform.broker-access-revision', middleware: ['platform.auth'])]
     public function revisions(ServerRequestInterface $request): ResponseInterface
@@ -255,12 +267,20 @@ final class AccessController
         if (array_diff(array_keys($input->source('query')), ['page', 'per_page']) !== []) {
             throw new HttpError(400, 'broker_access_query_invalid');
         }
-        $query = \_vali(['page' => Field::integer()->cast()->range(1, 100000)->from('query'),
-            'per_page' => Field::integer()->cast()->range(1, 100)->from('query')], $input);
+        $query = \_vali([
+            'page.default' => 1,
+            'page.integer' => '页码不正确',
+            'page.between:1,100000' => '页码超出范围',
+            'per_page.default' => 20,
+            'per_page.integer' => '每页数量不正确',
+            'per_page.between:1,100' => '每页数量超出范围',
+        ], $input->source('query'));
         return $this->response(AccessService::revisions($this->connection($request), $context['tenant_id'], $parameters['id'] ?? '', $query['page'] ?? 1, $query['per_page'] ?? 20));
     }
 
-    /** 对当前未完成版本显式重试；不增加新版本，也不把失败节点标成已生效。 */
+    /**
+     * 对当前未完成版本显式重试；不增加新版本，也不把失败节点标成已生效。
+     */
     #[Route('/platform/broker/access/revisions/{id}/retry', methods: ['POST'], name: 'platform.broker-access-retry', middleware: ['platform.auth'])]
     public function retry(ServerRequestInterface $request): ResponseInterface
     {
@@ -269,7 +289,9 @@ final class AccessController
         });
     }
 
-    /** 非收紧发布回退到上一快照并形成新版本；收紧失败不能用回退恢复旧授权。 */
+    /**
+     * 非收紧发布回退到上一快照并形成新版本；收紧失败不能用回退恢复旧授权。
+     */
     #[Route('/platform/broker/access/revisions/{id}/rollback', methods: ['POST'], name: 'platform.broker-access-rollback', middleware: ['platform.auth'])]
     public function rollback(ServerRequestInterface $request): ResponseInterface
     {
@@ -348,7 +370,9 @@ final class AccessController
         AuditLog::recordBroker($connection, $realm, $payload, $stage, ['request_id' => $requestId, 'stage' => $stage, 'result' => $outcome, 'facts' => ['reason' => $reason]]);
     }
 
-    /** 请求作用域内的数据库连接；缺少作用域不能私建连接。 */
+    /**
+     * 请求作用域内的数据库连接；缺少作用域不能私建连接。
+     */
     private function connection(ServerRequestInterface $request): Connection
     {
         $scope = $request->getAttribute('type.scope');

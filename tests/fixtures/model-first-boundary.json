@@ -69,64 +69,10 @@
             "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
         },
         {
-            "owner": "app\\center\\service\\ClientApplicationService::create",
-            "method": "table",
-            "argument": "'platform_mqtt_access_principal'",
-            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
-        },
-        {
-            "owner": "app\\center\\service\\ClientApplicationService::create",
-            "method": "table",
-            "argument": "'platform_mqtt_access_credential'",
-            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
-        },
-        {
-            "owner": "app\\center\\service\\ClientApplicationService::change",
-            "method": "table",
-            "argument": "'platform_mqtt_access_credential'",
-            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
-        },
-        {
-            "owner": "app\\center\\service\\ClientApplicationService::change",
-            "method": "table",
-            "argument": "'platform_mqtt_access_principal'",
-            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
-        },
-        {
             "owner": "app\\center\\service\\ClientApplicationService::access",
             "method": "connection_parameter",
             "argument": "$connection: Type\\Orm\\Connection",
             "reason": "协议、恢复或跨模型基础设施复用调用方已经建立的受管事务连接。"
-        },
-        {
-            "owner": "app\\center\\service\\ClientApplicationService::accessCurrent",
-            "method": "table",
-            "argument": "'platform_mqtt_access_credential'",
-            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
-        },
-        {
-            "owner": "app\\center\\service\\ClientApplicationService::accessCurrent",
-            "method": "table",
-            "argument": "'platform_mqtt_access_principal'",
-            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
-        },
-        {
-            "owner": "app\\center\\service\\ClientApplicationService::project",
-            "method": "table",
-            "argument": "'platform_mqtt_access_credential'",
-            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
-        },
-        {
-            "owner": "app\\center\\service\\ClientApplicationService::project",
-            "method": "table",
-            "argument": "'platform_mqtt_access_revision'",
-            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
-        },
-        {
-            "owner": "app\\center\\service\\DeviceService::enroll",
-            "method": "table",
-            "argument": "'platform_mqtt_access_principal'",
-            "reason": "MQTT 协议持久状态由通信组件拥有，保留其原子状态转换、幂等和连接代次语义。"
         },
         {
             "owner": "app\\center\\service\\DeviceService::observations",
@@ -173,7 +119,7 @@
         {
             "owner": "app\\center\\service\\DeviceService::accessState",
             "method": "query",
-            "argument": "SELECT id, device_id, principal, actor_id FROM center_authorization_invalidation WHERE completed_at IS NULL ORDER BY requested_at, id LIMIT 1",
+            "argument": "SELECT id, tenant_id, device_id, principal, actor_id FROM center_authorization_invalidation WHERE completed_at IS NULL ORDER BY requested_at, id LIMIT 1",
             "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
         },
         {
@@ -215,25 +161,25 @@
         {
             "owner": "app\\center\\service\\DeviceService::observeDevice",
             "method": "query",
-            "argument": "SELECT lifecycle, ownership_id FROM center_device WHERE id = ? AND recovery_verified = 1 FOR UPDATE",
+            "argument": "SELECT lifecycle, ownership_id FROM center_device WHERE tenant_id = ? AND id = ? AND recovery_verified = 1 FOR UPDATE",
             "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
         },
         {
             "owner": "app\\center\\service\\DeviceService::observeDevice",
             "method": "query",
-            "argument": "SELECT id FROM center_device_credential WHERE id = ? AND device_id = ? AND ownership_id = ? AND status = 'active' AND recovery_verified = 1 FOR UPDATE",
+            "argument": "SELECT id FROM center_device_credential WHERE tenant_id = ? AND id = ? AND device_id = ? AND ownership_id = ? AND status = 'active' AND recovery_verified = 1 FOR UPDATE",
             "reason": "恢复扫描、复合身份和游标需要固定表白名单，不能用单字段模型主键替代。"
         },
         {
             "owner": "app\\center\\service\\DeviceService::observeDevice",
             "method": "execute",
-            "argument": "\"UPDATE center_device_connection SET status = 'online', owner_id = ?, node_id = ?, run_id = ?, observed_at = ? WHERE device_id = ? AND ownership_id = ?\" . ' AND EXISTS (SELECT 1 FROM center_broker_observation WHERE node_id = ? AND run_id = ? AND expires_at > ?)'",
+            "argument": "\"UPDATE center_device_connection SET status = 'online', owner_id = ?, node_id = ?, run_id = ?, observed_at = ? WHERE tenant_id = ? AND device_id = ? AND ownership_id = ?\" . ' AND EXISTS (SELECT 1 FROM center_broker_observation WHERE node_id = ? AND run_id = ? AND expires_at > ?)'",
             "reason": "运行观察与在线状态是跨模型原子投影，保留同一事务中的条件更新语义。"
         },
         {
             "owner": "app\\center\\service\\DeviceService::observeDevice",
             "method": "execute",
-            "argument": "\"UPDATE center_device_connection SET status = 'offline', observed_at = ? WHERE device_id = ? AND owner_id = ? AND run_id = ? AND status = 'online'\"",
+            "argument": "\"UPDATE center_device_connection SET status = 'offline', observed_at = ? WHERE tenant_id = ? AND device_id = ? AND owner_id = ? AND run_id = ? AND status = 'online'\"",
             "reason": "运行观察与在线状态是跨模型原子投影，保留同一事务中的条件更新语义。"
         },
         {
@@ -451,6 +397,12 @@
             "method": "rawquery",
             "argument": "\"SELECT set_config('application_name', ?, false), set_config('statement_timeout', '1000', false), \" . \"set_config('lock_timeout', '500', false), set_config('idle_in_transaction_session_timeout', '1000', false), \" . \"set_config('synchronous_commit', 'remote_apply', false)\"",
             "reason": "跨 Tenant 或跨模型原子操作需要在已授权事务内保持完整条件和锁语义。"
+        },
+        {
+            "owner": "app\\center\\service\\TransferService::acceptRelationship",
+            "method": "table",
+            "argument": "'center_device_connection'",
+            "reason": "跨 Tenant 转配在同一受控事务内迁移连接观察归属，保持设备、使用关系和连接投影原子一致。"
         }
     ]
 }

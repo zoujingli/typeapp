@@ -32,7 +32,9 @@ final class ApiErrors implements MiddlewareInterface
 
     private string $basePath;
 
-    /** 只保存响应工厂、明确的调试权限和代码路径根，不保存配置值或异常对象。 */
+    /**
+     * 只保存响应工厂、明确的调试权限和代码路径根，不保存配置值或异常对象。
+     */
     public function __construct(Factory $messages, bool $debug = false, string $basePath = '')
     {
         $this->messages = $messages;
@@ -64,10 +66,7 @@ final class ApiErrors implements MiddlewareInterface
                 $requestId
             );
         } catch (ValidationException $validationError) {
-            return $this->response($validationError->status(), [
-                'error' => $validationError->errorCode(),
-                'fields' => $validationError->errors(),
-            ], $requestId);
+            return $this->response($validationError->status(), $validationError->body(), $requestId);
         } catch (ModelException $modelError) {
             if ($modelError->errorCode() === 'user_not_found') {
                 return $this->response(404, ['error' => 'user_not_found'], $requestId);
@@ -85,7 +84,9 @@ final class ApiErrors implements MiddlewareInterface
         }
     }
 
-    /** 不字符串化异常或记录消息、参数；调试日志只选取代码位置、函数名与异常类型。 */
+    /**
+     * 不字符串化异常或记录消息、参数；调试日志只选取代码位置、函数名与异常类型。
+     */
     private function failure(\Throwable $error, ServerRequestInterface $request, string $requestId): ResponseInterface
     {
         $filename = str_replace('\\', '/', $error->getFile());
@@ -139,7 +140,9 @@ final class ApiErrors implements MiddlewareInterface
         return $this->response(500, ['error' => 'internal_error'], $requestId);
     }
 
-    /** @param array<string, mixed> $body 稳定错误码与不含输入值的公开校验结果。 */
+    /**
+     * @param array<string, mixed> $body 稳定错误码与不含输入值的公开校验结果。
+     */
     private function response(int $status, array $body, string $requestId): ResponseInterface
     {
         return $this->messages->createResponse($status)

@@ -14,16 +14,21 @@ use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
 use Type\Core\Http\RequestBody;
-use Type\Validate\Field;
 use Type\Validate\Input;
 
-/** 平台发起隔离、目标客户确认接收。 */
+/**
+ * 平台发起隔离、目标客户确认接收。
+ */
 final class TransferController
 {
-    /** 保存受管连接与消息工厂；持久流程仍由TransferService拥有。 */
+    /**
+     * 保存受管连接与消息工厂；持久流程仍由TransferService拥有。
+     */
     public function __construct(private Factory $messages, private ApplicationContext $application) {}
 
-    /** 平台设置期限，或以确定请求 ID 结束/重新分配当前关系；身份不接受客户头覆盖。 */
+    /**
+     * 平台设置期限，或以确定请求 ID 结束/重新分配当前关系；身份不接受客户头覆盖。
+     */
     #[Route('/platform/devices/{device}/usage/{operation}', methods: ['POST'], name: 'platform.device-usage', middleware: ['platform.auth'], constraints: ['device' => '[a-f0-9]{32}', 'operation' => 'expiry|end|reassign'])]
     public function usage(string $device, string $operation, ServerRequestInterface $request): ResponseInterface
     {
@@ -31,20 +36,35 @@ final class TransferController
             throw new HttpError(403, 'identity_context_invalid');
         }
         $identity = $this->identity($request);
-        $fields = ['version' => Field::integer()->required()->range(1, 2147483645)];
+        $rules = [
+            ..._version('version', 1, '版本', 2147483645),
+        ];
         if ($operation === 'expiry') {
-            $fields['expires_at'] = Field::integer()->nullable()->required()->range(1, 4102444800);
-            $data = $this->payload($request, $fields);
+            $rules += [
+                'expires_at.required' => '期限不能为空',
+                'expires_at.nullable' => '期限可以为空',
+                'expires_at.integer' => '期限不正确',
+                'expires_at.between:1,4102444800' => '期限超出范围',
+            ];
+            $data = $this->payload($request, $rules);
             return $this->response(200, ['data' => TransferService::expiry($identity, $device, $data['version'], $data['expires_at'])]);
         }
-        $fields['id'] = Field::text()->required()->matches('/^[a-f0-9]{32}$/D');
+        $rules += [
+            'id.required' => '请求标识不能为空',
+            'id.matches:/^[a-f0-9]{32}$/D' => '请求标识不正确',
+        ];
         if ($operation === 'reassign') {
-            $fields['target_tenant_id'] = Field::text()->required()->matches('/^[a-f0-9]{32}$/D');
+            $rules += [
+                'target_tenant_id.required' => '目标客户不能为空',
+                'target_tenant_id.matches:/^[a-f0-9]{32}$/D' => '目标客户不正确',
+            ];
         }
-        return $this->response(202, ['data' => TransferService::reassign($identity, $device, $this->payload($request, $fields))]);
+        return $this->response(202, ['data' => TransferService::reassign($identity, $device, $this->payload($request, $rules))]);
     }
 
-    /** 平台查看全部、客户仅查看来源或目标为本客户的转配；GET 不推进外部工作。 */
+    /**
+     * 平台查看全部、客户仅查看来源或目标为本客户的转配；GET 不推进外部工作。
+     */
     #[Route('/platform/reassignments', name: 'platform.reassignments', middleware: ['platform.auth'])]
     #[Route('/center/reassignments', name: 'center.reassignments', middleware: ['system.auth'])]
     public function reassignments(ServerRequestInterface $request): ResponseInterface
@@ -58,11 +78,20 @@ final class TransferController
         if (array_diff(array_keys($input->source('query')), ['page', 'per_page']) !== []) {
             throw new HttpError(422, 'reassignment_query_invalid');
         }
-        $query = \_vali(['page' => Field::integer()->cast()->range(1, 100000)->from('query'), 'per_page' => Field::integer()->cast()->range(1, 100)->from('query')], $input) + ['page' => 1, 'per_page' => 20];
+        $query = \_vali([
+            'page.default' => 1,
+            'page.integer' => '页码不正确',
+            'page.between:1,100000' => '页码超出范围',
+            'per_page.default' => 20,
+            'per_page.integer' => '每页数量不正确',
+            'per_page.between:1,100' => '每页数量超出范围',
+        ], $input->source('query'));
         return $this->response(200, TransferService::reassignments($this->identity($request), $realm, $tenant, $query['page'], $query['per_page']));
     }
 
-    /** 推进必须由平台明确请求，接收必须由目标客户明确确认；返回实际阶段和一次性凭据。 */
+    /**
+     * 推进必须由平台明确请求，接收必须由目标客户明确确认；返回实际阶段和一次性凭据。
+     */
     #[Route('/platform/reassignments/{transfer}', methods: ['GET', 'POST'], name: 'platform.reassignment', middleware: ['platform.auth'], constraints: ['transfer' => '[a-f0-9]{32}'])]
     #[Route('/center/reassignments/{transfer}', methods: ['GET', 'POST'], name: 'center.reassignment', middleware: ['system.auth'], constraints: ['transfer' => '[a-f0-9]{32}'])]
     public function reassignment(string $transfer, ServerRequestInterface $request): ResponseInterface
@@ -76,12 +105,18 @@ final class TransferController
         if ($request->getMethod() === 'GET') {
             return $this->response(200, TransferService::reassignments($identity, $realm, $tenant, 1, 20, $transfer));
         }
-        $fields = ['version' => Field::integer()->required()->range(1, 2147483645),
-            'action' => Field::text()->required()->oneOf([$realm === 'platform' ? 'advance' : 'accept'])];
+        $rules = [
+            ..._version('version', 1, '版本', 2147483645),
+            'action.required' => '动作不能为空',
+            'action.in:' . ($realm === 'platform' ? 'advance' : 'accept') => '动作不正确',
+        ];
         if ($realm === 'system') {
-            $fields['id'] = Field::text()->required()->matches('/^[a-f0-9]{32}$/D');
+            $rules += [
+                'id.required' => '请求标识不能为空',
+                'id.matches:/^[a-f0-9]{32}$/D' => '请求标识不正确',
+            ];
         }
-        $data = $this->payload($request, $fields);
+        $data = $this->payload($request, $rules);
         $result = $realm === 'platform'
             ? TransferService::advanceRelationship($identity, $transfer, $data['version'], ApplicationContext::centerStoreWorker($this->application->settings()->text('app.mqtt.command')))
             : TransferService::acceptRelationship($identity, $tenant, $transfer, $data['version'], $data['id']);
@@ -93,17 +128,23 @@ final class TransferController
         return TenantContext::id($request);
     }
 
-    /** @param array<string, Field> $fields 有界对象白名单；拒绝伪造归属及状态。 */
-    private function payload(ServerRequestInterface $request, array $fields): array
+    /**
+     * @param array<string, mixed> $rules 字段.规则；声明之外的归属和状态一律拒绝。
+     */
+    private function payload(ServerRequestInterface $request, array $rules): array
     {
         if (strtolower(trim(explode(';', $request->getHeaderLine('Content-Type'))[0])) !== 'application/json') {
             throw new HttpError(415, 'json_required');
         }
         $input = Input::json(RequestBody::read($request->getBody(), 4096), 4096, 4);
-        if (array_diff(array_keys($input->source('body')), array_keys($fields)) !== []) {
+        $allowed = [];
+        foreach ($rules as $key => $message) {
+            $allowed[explode('.', (string)$key, 2)[0]] = true;
+        }
+        if (array_diff(array_keys($input->source('body')), array_keys($allowed)) !== []) {
             throw new HttpError(422, 'unexpected_field');
         }
-        return \_vali($fields, $input);
+        return \_vali($rules, $input->source('body'));
     }
 
     private function identity(ServerRequestInterface $request): Identity

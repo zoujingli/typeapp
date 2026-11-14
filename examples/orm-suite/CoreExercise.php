@@ -24,10 +24,14 @@ use Type\Runtime\ExecutionScope;
 use Type\Runtime\ManagedTask;
 use Type\Runtime\TaskException;
 
-/** 三库共用的属性、组合查询、关系计算和诊断公共行为验收。 */
+/**
+ * 三库共用的属性、组合查询、关系计算和诊断公共行为验收。
+ */
 final class CoreExercise
 {
-    /** 完整批次、数据库冲突目标、受管时间版本及不可见行通过一条真实冲突 SQL 验证。 */
+    /**
+     * 完整批次、数据库冲突目标、受管时间版本及不可见行通过一条真实冲突 SQL 验证。
+     */
     public static function upserts(): void
     {
         $connection = Db::connection('default', true);
@@ -95,7 +99,9 @@ final class CoreExercise
             : UnsafeUniqueRecord::upsert([['id' => 1, 'code' => 'unsafe']], ['code'], ['id']), $driver === 'mysql' ? 'unsafe_unique_identity' : 'field_not_fillable'), '冲突写入接受不安全索引或受保护字段');
     }
 
-    /** 真实唯一元数据、固定身份与创建保存点通过公开静态 Model 入口验证。 */
+    /**
+     * 真实唯一元数据、固定身份与创建保存点通过公开静态 Model 入口验证。
+     */
     public static function firstOrCreate(): void
     {
         $connection = Db::connection('default', true);
@@ -168,7 +174,9 @@ final class CoreExercise
         self::uniqueSnapshot();
     }
 
-    /** 公开父模型句柄的读写分离、作用域、租户绑定、回滚失效与前置拒绝。 */
+    /**
+     * 公开父模型句柄的读写分离、作用域、租户绑定、回滚失效与前置拒绝。
+     */
     public static function relationHandles(ExecutionScope $scope, int $userId): void
     {
         $connection = Db::connection('default', true);
@@ -221,7 +229,9 @@ final class CoreExercise
         self::check(self::reject(static fn (): bool => $deleted->attach($tagId), 'model_invalid'), '删除后关系句柄仍可写入');
     }
 
-    /** 独立消费者的真实驱动与原生产物共同验证上下文和租约边界。 */
+    /**
+     * 独立消费者的真实驱动与原生产物共同验证上下文和租约边界。
+     */
     public static function scopes(Driver $driver): array
     {
         self::check(self::reject(static fn (): ExecutionScope => ExecutionScope::current(), 'scope_missing'), '消费者入口残留先前作用域');
@@ -328,7 +338,9 @@ final class CoreExercise
         return ['binding-restore', 'snapshot', 'child-transaction', 'connection-owner', 'closed-connection', 'parent-cancel', 'parent-close', 'deadline', 'late-release', 'database-io-wait'];
     }
 
-    /** 同一消费程序验证租户 CRUD、全局父模型关系、部分投影及异常边界。 */
+    /**
+     * 同一消费程序验证租户 CRUD、全局父模型关系、部分投影及异常边界。
+     */
     public static function tenants(ExecutionScope $scope, int $userId): void
     {
         $connection = Db::connection('default', true);
@@ -405,7 +417,9 @@ final class CoreExercise
         self::check($scope->binding('tenant_id') === null, '租户绑定没有恢复');
     }
 
-    /** 连续租约通过真实服务端身份验证复用；任意 SQL 和触发器遵循相同重置边界。 */
+    /**
+     * 连续租约通过真实服务端身份验证复用；任意 SQL 和触发器遵循相同重置边界。
+     */
     public static function sessions(Driver $driver): array
     {
         $database = new Database($driver, 1, 1);
@@ -558,7 +572,9 @@ final class CoreExercise
         }
     }
 
-    /** 在已有业务数据上验证模型脏字段、持久状态、字段保护和集合查询行为。 */
+    /**
+     * 在已有业务数据上验证模型脏字段、持久状态、字段保护和集合查询行为。
+     */
     public static function run(Connection $connection, int $userId, int $articleId): void
     {
         $user = User::query()->findOrFail($userId);
@@ -612,7 +628,7 @@ final class CoreExercise
         self::check($grouped->count() === 3 && $base->whereNull('deleted_at')->count() === 3, '模型条件组或 NULL/NOT IN 错误');
         self::check($base->where('status', '=', 'draft')->orWhere('views', '=', 10)->count() === 2, '模型 OR 映射错误');
         self::check(User::query()->whereJson('profile', ['enabled'], true)->exists(), '模型 JSON 标量条件错误');
-        self::check($base->orderBy('id')->value('views') === 10 && count($base->pluck('title', 'id')) === 3, '模型值提取或类型转换错误');
+        self::check($base->order('id')->value('views') === 10 && count($base->pluck('title', 'id')) === 3, '模型值提取或类型转换错误');
         self::check(self::reject(static fn () => $base->findOrFail(-1), 'not_found') && !$base->whereIn('id', [])->exists(), '模型缺失语义错误');
         $before = $connection->statistics();
         self::check(str_contains($grouped->toSql(), 'SELECT') && count($grouped->bindings()) === 2 && $connection->statistics() === $before, 'SQL 预览执行了数据库读取');
@@ -707,7 +723,9 @@ final class CoreExercise
         self::check(self::reject(static fn (): UnsafeUniqueRecord => UnsafeUniqueRecord::firstOrCreate(['code' => 'unsafe'], ['id' => 2]), 'unsafe_unique_identity'), '部分、表达式或前缀索引冒充完整唯一身份');
     }
 
-    /** 在真实可重复读快照中保留外层写入，明确报告不可见获胜者，不重跑事务体。 */
+    /**
+     * 在真实可重复读快照中保留外层写入，明确报告不可见获胜者，不重跑事务体。
+     */
     private static function uniqueSnapshot(): void
     {
         $connection = Db::connection('default', true);
@@ -752,7 +770,9 @@ final class CoreExercise
         Tag::query()->whereIn('label', ['快照获胜者', '快照外层保留'])->delete();
     }
 
-    /** 真实写锁等待期间让出协程；停止等待不能提前归还仍在执行 SQL 的连接。 */
+    /**
+     * 真实写锁等待期间让出协程；停止等待不能提前归还仍在执行 SQL 的连接。
+     */
     private static function databaseWait(Driver $driver): void
     {
         $controller = new Database($driver, 1, 0);

@@ -26,3 +26,5 @@
 - [构建期自动装配作为应用默认入口](0024-build-time-application-assembly.md)
 - [在原 Service 类型上落实事务与缓存声明](0025-service-declaration-transformation.md)
 - [Platform / System / Center 与原始通信](0026-control-client-device-authorization.md)
+- [Center 支撑业务事实直接绑定 Tenant](0027-center-support-records-tenant-scope.md)
+- [MQTT 持久状态保留受控基础设施边界](0028-mqtt-persistence-model-boundary.md)

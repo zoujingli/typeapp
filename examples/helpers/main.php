@@ -19,16 +19,22 @@ use Type\Validate\Input;
 use Type\Validate\Schema;
 use Type\Validate\ValidationException;
 
-/** 测试模型通过公开映射水合，字段类型继续由 ModelQuery 校验。 */
+/**
+ * 测试模型通过公开映射水合，字段类型继续由 ModelQuery 校验。
+ */
 final class TypeHelperUser extends Model
 {
-    /** @param array<string, mixed> $values 已从测试数据库读取的字段。 */
+    /**
+     * @param array<string, mixed> $values 已从测试数据库读取的字段。
+     */
     public function __construct(array $values)
     {
         parent::__construct(self::mapping(), $values, true);
     }
 
-    /** 测试查询不绕过已有ORM模型字段映射。 */
+    /**
+     * 测试查询不绕过已有ORM模型字段映射。
+     */
     public static function mapping(): ModelDefinition
     {
         return new ModelDefinition('helper_users', 'id', [
@@ -42,16 +48,22 @@ final class TypeHelperUser extends Model
     }
 }
 
-/** 排序验收模型使用不同于数据库列的字段名称，避免仅证明同名映射。 */
+/**
+ * 排序验收模型使用不同于数据库列的字段名称，避免仅证明同名映射。
+ */
 final class TypeHelperSortedUser extends Model
 {
-    /** @param array<string, mixed> $values 按模型字段名水合的真实查询结果。 */
+    /**
+     * @param array<string, mixed> $values 按模型字段名水合的真实查询结果。
+     */
     public function __construct(array $values)
     {
         parent::__construct(self::mapping(), $values, true);
     }
 
-    /** 业务 years/label 分别映射到数据库 age/name；排序必须经过该映射。 */
+    /**
+     * 业务 years/label 分别映射到数据库 age/name；排序必须经过该映射。
+     */
     public static function mapping(): ModelDefinition
     {
         return new ModelDefinition('helper_users', 'id', [
@@ -64,7 +76,9 @@ final class TypeHelperSortedUser extends Model
     }
 }
 
-/** 公共行为断言不读取测试实现内部状态。 */
+/**
+ * 公共行为断言不读取测试实现内部状态。
+ */
 function helpersAssert(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -72,7 +86,9 @@ function helpersAssert(bool $condition, string $message): void
     }
 }
 
-/** 只经公开查询和分页结果验证排序，不读取私有 orders 或检查生成 SQL 文本。 */
+/**
+ * 只经公开查询和分页结果验证排序，不读取私有 orders 或检查生成 SQL 文本。
+ */
 function helpersOrdering(Connection $connection): void
 {
     foreach ([[5, 1, 18, 1, null, 'Alpha'], [6, 1, 18, 1, null, 'Beta'], [7, 2, 99, 1, null, '其他租户']] as $sortRow) {
@@ -189,13 +205,13 @@ function helpersOrdering(Connection $connection): void
     $modelPage = $modelSorted->paginatePage();
     helpersAssert($modelPage->total() === 5 && count($modelPage->items()) === 2 && $modelPage->items()[0] instanceof TypeHelperSortedUser
         && $modelPage->items()[0]->get('id') === 5 && $modelPage->items()[1]->get('id') === 6, '模型映射排序、水合、稳定分页或租户隔离失败');
-    $modelExisting = $modelBase->orderBy('years', 'ASC');
+    $modelExisting = $modelBase->order('years', 'ASC');
     $modelFixed = _query($modelExisting, ['sort' => 'oldest', 'direction' => 'DESC'])->order($modelAllowed)->paginatePage();
     helpersAssert(
         array_map(static fn (TypeHelperSortedUser $user): int => $user->get('id'), $modelFixed->items()) === [1, 2, 5, 6, 3],
         '模型字段映射后重复排序没有保留原始方向'
     );
-    $modelPriority = _query($modelBase->orderBy('active', 'DESC'), ['sort' => 'oldest'])->order($modelAllowed)->paginatePage();
+    $modelPriority = _query($modelBase->order('active', 'DESC'), ['sort' => 'oldest'])->order($modelAllowed)->paginatePage();
     helpersAssert(
         array_map(static fn (TypeHelperSortedUser $user): int => $user->get('id'), $modelPriority->items()) === [2, 5, 6, 3, 1],
         '模型排序没有保留固定业务优先级'
@@ -217,7 +233,9 @@ function helpersOrdering(Connection $connection): void
     helpersAssert(count($connection->table('helper_users')->get()) === 7, '排序注入或失败路径改变了表数据');
 }
 
-/** 默认值复用公开校验入口，区分缺失、显式输入、PATCH和声明快照。 */
+/**
+ * 默认值复用公开校验入口，区分缺失、显式输入、PATCH和声明快照。
+ */
 function helpersDefaults(): void
 {
     $defaultRules = [
@@ -225,36 +243,36 @@ function helpersDefaults(): void
         'active' => Field::boolean()->defaultValue(false),
         'note' => Field::text()->nullable()->defaultValue(null),
     ];
-    helpersAssert(_vali($defaultRules, []) === ['limit' => 20, 'active' => false, 'note' => null], '缺失字段没有使用经过校验的显式默认值');
+    helpersAssert(fieldVali($defaultRules, []) === ['limit' => 20, 'active' => false, 'note' => null], '缺失字段没有使用经过校验的显式默认值');
     $defaultProfile = new stdClass();
     $defaultProfile->city = '杭州';
     $profileRule = Field::object(new Schema(['city' => Field::text()->required()]))->defaultValue($defaultProfile);
     $defaultProfile->city = '不能影响已声明规则';
-    helpersAssert(_vali(['profile' => $profileRule], []) === ['profile' => ['city' => '杭州']], '声明后的对象修改污染了默认值');
-    helpersAssert(_vali($defaultRules, ['limit' => '3', 'active' => true, 'note' => '']) === ['limit' => 3, 'active' => true, 'note' => ''], '默认值覆盖了明确输入');
-    helpersAssert(_vali($defaultRules, [], patch: true) === [], 'PATCH为缺失字段注入了默认值');
-    helpersAssert(_vali($defaultRules, ['note' => null], patch: true) === ['note' => null], 'PATCH中的null被视为缺失');
+    helpersAssert(fieldVali(['profile' => $profileRule], []) === ['profile' => ['city' => '杭州']], '声明后的对象修改污染了默认值');
+    helpersAssert(fieldVali($defaultRules, ['limit' => '3', 'active' => true, 'note' => '']) === ['limit' => 3, 'active' => true, 'note' => ''], '默认值覆盖了明确输入');
+    helpersAssert(fieldVali($defaultRules, [], patch: true) === [], 'PATCH为缺失字段注入了默认值');
+    helpersAssert(fieldVali($defaultRules, ['note' => null], patch: true) === ['note' => null], 'PATCH中的null被视为缺失');
     $optional = Field::integer();
-    helpersAssert(_vali(['value' => $optional], []) === [] && _vali(['value' => $optional->defaultValue(0)], []) === ['value' => 0], '默认声明修改了原Field或丢失零值');
+    helpersAssert(fieldVali(['value' => $optional], []) === [] && fieldVali(['value' => $optional->defaultValue(0)], []) === ['value' => 0], '默认声明修改了原Field或丢失零值');
     $defaultData = ValidateHelper::data($defaultRules, []);
     helpersAssert($defaultData->has('note') && $defaultData->get('note') === null && !$defaultData->has('unknown'), 'Data没有区分有效默认null与未声明字段');
     $source = new Input(['body' => ['page' => '99'], 'query' => []]);
     $sourceRules = ['page' => Field::integer()->from('query', 'p')->cast()->defaultValue('2')];
-    helpersAssert(_vali($sourceRules, $source) === ['page' => 2] && $source->source('query') === [], '默认值混合或修改了原始输入来源');
-    helpersAssert(_vali(['value' => Field::text()->defaultValue(' x ')->trim()->length(1, 1)], []) === ['value' => 'x'], '默认文本没有经过转换与长度规则');
+    helpersAssert(fieldVali($sourceRules, $source) === ['page' => 2] && $source->source('query') === [], '默认值混合或修改了原始输入来源');
+    helpersAssert(fieldVali(['value' => Field::text()->defaultValue(' x ')->trim()->length(1, 1)], []) === ['value' => 'x'], '默认文本没有经过转换与长度规则');
     $scenarioRule = Field::integer()->defaultValue(7)->inScenarios(['create']);
-    helpersAssert(_vali(['value' => $scenarioRule], [], scenario: 'update') === [], '不适用的场景产生了默认值');
-    helpersAssert(_vali(['value' => $scenarioRule], [], scenario: 'create') === ['value' => 7], '适用场景丢失默认值');
+    helpersAssert(fieldVali(['value' => $scenarioRule], [], scenario: 'update') === [], '不适用的场景产生了默认值');
+    helpersAssert(fieldVali(['value' => $scenarioRule], [], scenario: 'create') === ['value' => 7], '适用场景丢失默认值');
     $conditional = Field::integer()->defaultValue(7)->when(
         static fn (Input $input, string $scenario): bool => ($input->source('body')['enabled'] ?? false) === true && $scenario === 'create'
     );
-    helpersAssert(_vali(['value' => $conditional], [], scenario: 'create') === [], '未满足条件时仍填入默认值');
-    helpersAssert(_vali(['value' => $conditional], ['enabled' => true], scenario: 'create') === ['value' => 7], '默认值条件没有收到原始输入与场景');
+    helpersAssert(fieldVali(['value' => $conditional], [], scenario: 'create') === [], '未满足条件时仍填入默认值');
+    helpersAssert(fieldVali(['value' => $conditional], ['enabled' => true], scenario: 'create') === ['value' => 7], '默认值条件没有收到原始输入与场景');
     $contextRule = Field::integer()->defaultValue(7)->rule(
         'context',
         static fn (mixed $value, Input $input, string $scenario): bool => $value === 7 && !array_key_exists('value', $input->source('body')) && $scenario === 'create'
     );
-    helpersAssert(_vali(['value' => $contextRule], [], scenario: 'create') === ['value' => 7], '默认值回调没有收到有效值、原始输入和场景');
+    helpersAssert(fieldVali(['value' => $contextRule], [], scenario: 'create') === ['value' => 7], '默认值回调没有收到有效值、原始输入和场景');
 
     foreach ([
         [Field::integer()->defaultValue(5), ['value' => null], 'null_not_allowed'],
@@ -269,7 +287,7 @@ function helpersDefaults(): void
     ] as $invalidDefault) {
         $defaultRejected = false;
         try {
-            _vali(['value' => $invalidDefault[0]], $invalidDefault[1]);
+            fieldVali(['value' => $invalidDefault[0]], $invalidDefault[1]);
         } catch (ValidationException $defaultError) {
             $defaultRejected = $defaultError->errors() === ['value' => [$invalidDefault[2]]]
                 && $defaultError->status() === 422 && !str_contains($defaultError->getMessage(), 'private-default-sentinel');
@@ -278,14 +296,14 @@ function helpersDefaults(): void
     }
     $nested = new Schema(['city' => Field::text()->defaultValue('杭州')]);
     $nestedRules = ['profile' => Field::object($nested)->defaultValue(new stdClass()), 'items' => Field::listOf(Field::object($nested))->defaultValue([new stdClass()])];
-    helpersAssert(_vali($nestedRules, []) === ['profile' => ['city' => '杭州'], 'items' => [['city' => '杭州']]], '对象或列表的默认值未递归校验');
-    helpersAssert(_vali(['profile' => Field::object($nested)], []) === [], '子字段默认值不应制造未提供的父对象');
-    helpersAssert(_vali($nestedRules, [], patch: true) === [], 'PATCH填充了缺失对象或列表');
-    helpersAssert(_vali($nestedRules, ['profile' => new stdClass(), 'items' => [new stdClass()]], patch: true) === ['profile' => [], 'items' => [['city' => '杭州']]], 'PATCH没有区分对象补丁和列表整体替换');
-    helpersAssert(_vali(['items' => Field::listOf(Field::integer())->defaultValue([])], []) === ['items' => []], '空列表默认值被视为未声明');
+    helpersAssert(fieldVali($nestedRules, []) === ['profile' => ['city' => '杭州'], 'items' => [['city' => '杭州']]], '对象或列表的默认值未递归校验');
+    helpersAssert(fieldVali(['profile' => Field::object($nested)], []) === [], '子字段默认值不应制造未提供的父对象');
+    helpersAssert(fieldVali($nestedRules, [], patch: true) === [], 'PATCH填充了缺失对象或列表');
+    helpersAssert(fieldVali($nestedRules, ['profile' => new stdClass(), 'items' => [new stdClass()]], patch: true) === ['profile' => [], 'items' => [['city' => '杭州']]], 'PATCH没有区分对象补丁和列表整体替换');
+    helpersAssert(fieldVali(['items' => Field::listOf(Field::integer())->defaultValue([])], []) === ['items' => []], '空列表默认值被视为未声明');
     $nestedFailed = false;
     try {
-        _vali(['profile' => Field::object(new Schema(['city' => Field::text()->required()]))->defaultValue(new stdClass())], []);
+        fieldVali(['profile' => Field::object(new Schema(['city' => Field::text()->required()]))->defaultValue(new stdClass())], []);
     } catch (ValidationException $nestedError) {
         $nestedFailed = $nestedError->errors() === ['profile.city' => ['required']];
     }
@@ -297,9 +315,9 @@ function helpersDefaults(): void
         $value->city = '宁波';
         return true;
     });
-    helpersAssert(_vali(['profile' => $mutatingRule], []) === ['profile' => ['city' => '宁波']]
-        && _vali(['profile' => $mutatingRule], []) === ['profile' => ['city' => '宁波']]
-        && _vali(['profile' => $profileRule], []) === ['profile' => ['city' => '杭州']], '回调修改污染了下一次校验或派生规则的默认值');
+    helpersAssert(fieldVali(['profile' => $mutatingRule], []) === ['profile' => ['city' => '宁波']]
+        && fieldVali(['profile' => $mutatingRule], []) === ['profile' => ['city' => '宁波']]
+        && fieldVali(['profile' => $profileRule], []) === ['profile' => ['city' => '杭州']], '回调修改污染了下一次校验或派生规则的默认值');
     $cycle = new stdClass();
     $cycle->self = $cycle;
     foreach ([$cycle, new DateTimeImmutable('2000-01-01'), static fn (): int => 1] as $unsupportedDefault) {
@@ -314,7 +332,7 @@ function helpersDefaults(): void
     $cycle->self = null;
     $callbackFailed = false;
     try {
-        _vali(['value' => Field::integer()->defaultValue(7)->rule('custom', static function (mixed $value, Input $input, string $scenario): bool {
+        fieldVali(['value' => Field::integer()->defaultValue(7)->rule('custom', static function (mixed $value, Input $input, string $scenario): bool {
             throw new LogicException('规则故障哨兵');
         })], []);
     } catch (LogicException $callbackError) {
@@ -323,39 +341,41 @@ function helpersDefaults(): void
     helpersAssert($callbackFailed, '默认值规则异常被伪装成普通输入错误');
 }
 
-/** 显式入口只使用测试自建输入，不读取隐式全局请求。 */
+/**
+ * 显式入口只使用测试自建输入，不读取隐式全局请求。
+ */
 function main(int $argc, array $argv): void
 {
     CoroutineRuntime::enableIo();
     CoroutineRuntime::run(static function (): void {
         helpersDefaults();
         $rules = ['age' => Field::integer()->required(), 'active' => Field::boolean()->required(), 'note' => Field::text()->nullable(), 'missing' => Field::text()];
-        $checked = _vali($rules, ['age' => 0, 'active' => false, 'note' => null, 'ignored' => '不返回']);
+        $checked = fieldVali($rules, ['age' => 0, 'active' => false, 'note' => null, 'ignored' => '不返回']);
         helpersAssert($checked === ['age' => 0, 'active' => false, 'note' => null], '快捷校验混淆了零、false、null或未声明字段');
         $data = ValidateHelper::data(new Schema($rules), new Input(['body' => ['age' => 1, 'active' => true, 'note' => null]]));
         helpersAssert($data->has('note') && $data->get('note') === null && !$data->has('missing'), 'Data没有保留missing与null');
-        helpersAssert(_vali($rules, [], patch: true) === [], 'PATCH为缺失输入制造了值');
-        helpersAssert(_vali(['name' => Field::text()->required()], ['name' => '']) === ['name' => ''], 'required不应被助手改成隐式非空规则');
+        helpersAssert(fieldVali($rules, [], patch: true) === [], 'PATCH为缺失输入制造了值');
+        helpersAssert(fieldVali(['name' => Field::text()->required()], ['name' => '']) === ['name' => ''], 'required不应被助手改成隐式非空规则');
         $input = new Input(['route' => ['id' => '9'], 'query' => ['id' => '7'], 'body' => ['id' => '5']]);
-        helpersAssert(_vali(['id' => Field::integer()->cast()->from('route')], $input) === ['id' => 9], '快捷校验合并了不同输入来源');
-        helpersAssert(_vali(['name' => Field::text()->required()->inScenarios(['create'])], [], scenario: 'update') === [], '场景被助手忽略');
+        helpersAssert(fieldVali(['id' => Field::integer()->cast()->from('route')], $input) === ['id' => 9], '快捷校验合并了不同输入来源');
+        helpersAssert(fieldVali(['name' => Field::text()->required()->inScenarios(['create'])], [], scenario: 'update') === [], '场景被助手忽略');
         $failed = false;
         try {
-            _vali(['name' => Field::text()->required()->length(1, 20)], ['name' => '']);
+            fieldVali(['name' => Field::text()->required()->length(1, 20)], ['name' => '']);
         } catch (ValidationException $error) {
             $failed = $error->errors() === ['name' => ['length']];
         }
         helpersAssert($failed, '显式非空规则没有生效');
         $redacted = false;
         try {
-            _vali(['age' => Field::integer()], ['age' => 'sensitive-test-value']);
+            fieldVali(['age' => Field::integer()], ['age' => 'sensitive-test-value']);
         } catch (ValidationException $error) {
             $redacted = !str_contains($error->getMessage(), 'sensitive-test-value') && $error->errors() === ['age' => ['type_integer']];
         }
         helpersAssert($redacted, '错误信息泄露输入值或丢失稳定错误码');
         $legacyRejected = false;
         try {
-            _vali(['name.require' => '名称必填'], []);
+            fieldVali(['name.require' => '名称必填'], []);
         } catch (InvalidArgumentException) {
             $legacyRejected = true;
         }
@@ -435,7 +455,7 @@ function main(int $argc, array $argv): void
                 $_GET = ['tenant' => 2, 'age' => 999, 'name' => '泄露'];
                 try {
                     helpersAssert(count(_query($base)->equal('age')->query()->get()) === 3, '查询助手读取了隐式全局输入');
-                    helpersAssert(_vali(['name' => Field::text()], []) === [], '校验助手读取了隐式全局输入');
+                    helpersAssert(fieldVali(['name' => Field::text()], []) === [], '校验助手读取了隐式全局输入');
                 } finally {
                     $_GET = $global;
                 }
@@ -447,4 +467,16 @@ function main(int $argc, array $argv): void
         }
         echo "显式输入快捷校验、受限查询、白名单排序与SQLite真实结果通过。\n";
     });
+}
+
+/**
+ * 保留字段对象的内部校验入口，供本示例核对默认值、场景和补丁语义。
+ *
+ * @param array<string, Field>|Schema $rules
+ * @param array<string, mixed>|Input $input
+ * @return array<string, mixed>
+ */
+function fieldVali(array|Schema $rules, array|Input $input = [], string $scenario = 'default', bool $patch = false): array
+{
+    return ValidateHelper::data($rules, $input, $scenario, $patch)->toArray();
 }

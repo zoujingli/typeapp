@@ -141,7 +141,7 @@ DB_SQLITE_FILE=var/typeapp.sqlite
 ./app help
 ```
 
-`verify-runtime` 检查运行身份与实际依赖，不替代业务验收。服务运行前，按应用自己的入口初始化或迁移：通用模板使用 `./app migrate run`；物联中心只允许在空库中使用 `./app app:install`，参数与受控口令环境见[初始化人员账号](iot-center.md#准备后端与人员账号)。物联中心不能用 `migrate run` 代替安装，也不自动清理已有数据库。
+`verify-runtime` 检查运行身份与实际依赖，不替代业务验收。服务运行前，按应用自己的入口初始化或迁移：通用模板使用 `./app migrate run`；物联中心首次空库使用 `./app app:install`，后续版本使用 `./app migrate run/up`，参数与受控口令环境见[初始化人员账号](iot-center.md#准备后端与人员账号)。`migrate run` 不能代替首次身份安装，也不自动清理已有数据库。
 
 ## 只读演示部署
 
@@ -255,7 +255,7 @@ Broker 接入、持久工作和设备授权均使用 Swoole 官方 Process、Thr
 
 当前 Platform/System/Center 采用全新安装，不提供旧身份、旧人员入口或旧数据转换分支。`app:install` 只接受空库；旧安装拒绝接入且不自动清库。历史版本的升级流程和回执只证明原版本，不适用于当前架构。现场数据切换、外部 DNS/TLS 准备与发布由部署计划单独处理。
 
-初始化失败后先查看 `migrate status/history`。MySQL 的部分 DDL 不会自动回滚，只有核对实际状态后才使用 `migrate recover <版本> <retry|applied> <核对说明>`；`migrate run` 不开放，不能绕过应用空库安装。通用模板仍使用自己的迁移合同。
+初始化失败后先查看 `migrate status/history`。MySQL 的部分 DDL 不会自动回滚，只有核对实际状态后才使用 `migrate recover <版本> <retry|applied> <核对说明>`；首次空库仍必须使用 `app:install`，后续版本由 `migrate run/up` 应用，回滚只执行显式 down。`migrate generate` 仅供开发入口生成只读草稿，不能作为发布时的隐式结构变更。
 
 当前安装的灾难恢复继续使用受控备份与 `center:recovery`：先停止并隔离原系统的全部写入角色，在隔离的新目标恢复备份，再使用备份之外的当前授权清单核对。状态机的快照、隔离、核对及恢复每批有界且可续跑，未匹配主体保持隔离；旧人员会话及未消费交接码清除，不把数据库回滚当作重新授权。Platform 管理 HTTP 和 MQTT 协议节点共用该恢复门，管理页面只显示进度。
 

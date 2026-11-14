@@ -19,16 +19,22 @@ use Type\Orm\ModelConditions;
 use Type\Orm\ModelQuery;
 use Type\Runtime\ExecutionScope;
 
-/** 双身份域共用授权算法，客户业务范围只来自已认证的 客户系统 会话。 */
+/**
+ * 双身份域共用授权算法，客户业务范围只来自已认证的 客户系统 会话。
+ */
 final class RoleService
 {
-    /** 已启用菜单节点是角色可授权目录，客户端不能提供新权限标识。 */
+    /**
+     * 已启用菜单节点是角色可授权目录，客户端不能提供新权限标识。
+     */
     public static function catalog(string $realm): array
     {
         return MenuService::catalog($realm);
     }
 
-    /** 空库安装及 客户系统 开通事务建立受保护角色，普通预设角色不自动取得业务权限。 */
+    /**
+     * 空库安装及 客户系统 开通事务建立受保护角色，普通预设角色不自动取得业务权限。
+     */
     public static function initializeScope(string $realm, string $scopeId, string $subjectId): void
     {
         $connection = Db::connection('default', true);
@@ -57,7 +63,9 @@ final class RoleService
         }
     }
 
-    /** 多个有效角色取并集；受保护超管取得本域当前已启用目录，不合并平台权限。 */
+    /**
+     * 多个有效角色取并集；受保护超管取得本域当前已启用目录，不合并平台权限。
+     */
     public static function permissions(Identity $identity, string $realm, string $tenantId = ''): array
     {
         $attributes = $identity->attributes();
@@ -89,7 +97,9 @@ final class RoleService
         return array_values(array_intersect(array_keys($catalog), $grants));
     }
 
-    /** 读取也重新检查会话、来源与当前目录，返回可供耗时操作后复核的上下文。 */
+    /**
+     * 读取也重新检查会话、来源与当前目录，返回可供耗时操作后复核的上下文。
+     */
     public static function readContext(Identity $identity, string $realm, string $tenantId, string $permission): array
     {
         $current = (new IdentityService($realm))->refresh($identity);
@@ -102,13 +112,17 @@ final class RoleService
         return ['identity' => IdentityService::context($current, $tenantId), 'permissions' => $permissions];
     }
 
-    /** 菜单树按当前权限过滤，目录本身不产生权限。 */
+    /**
+     * 菜单树按当前权限过滤，目录本身不产生权限。
+     */
     public static function menus(string $realm, array $permissions): array
     {
         return MenuService::navigation($realm, $permissions);
     }
 
-    /** 写锁后复核身份及权限；业务事实与审计沿用同一事务。 */
+    /**
+     * 写锁后复核身份及权限；业务事实与审计沿用同一事务。
+     */
     public static function authorized(Identity $identity, ?string $token, string $permission, \Closure $operation, string $realm = 'system', string $scopeId = ''): array
     {
         $connection = Db::connection('default', true);
@@ -131,7 +145,9 @@ final class RoleService
         }, 'default', $connection->driverName() === 'sqlite' && $connection->transactionDepth() === 0 ? 'immediate' : 'default');
     }
 
-    /** 授权、登录和身份变更共用安装锁，旧安装不能进入新数据结构。 */
+    /**
+     * 授权、登录和身份变更共用安装锁，旧安装不能进入新数据结构。
+     */
     public static function lockAuthorization(): void
     {
         $connection = Db::connection('default', true);
@@ -145,7 +161,9 @@ final class RoleService
         }
     }
 
-    /** 受保护角色与有效账号必须在同一域仍有绑定，禁止撤走最后一位超管。 */
+    /**
+     * 受保护角色与有效账号必须在同一域仍有绑定，禁止撤走最后一位超管。
+     */
     public static function requireHighest(string $realm, string $scopeId): void
     {
         if ($realm === 'system' && ExecutionScope::current()->binding('tenant_id') !== $scopeId) {
@@ -158,7 +176,9 @@ final class RoleService
         }
     }
 
-    /** 人员及角色目录共用模型投影和有界分页，System 模型自动约束 客户系统。 */
+    /**
+     * 人员及角色目录共用模型投影和有界分页，System 模型自动约束 客户系统。
+     */
     public static function directory(Identity $identity, string $kind, string $id, array $filters, string $realm = 'platform', string $scopeId = 'platform'): array
     {
         if (!in_array($kind, ['users', 'roles'], true)) {
@@ -207,7 +227,9 @@ final class RoleService
             'permissions' => $access['permissions'], 'menus' => self::menus($realm, $access['permissions'])];
     }
 
-    /** 双端人员、角色及关联写入共享授权事实，任何失败都回滚整个批次。 */
+    /**
+     * 双端人员、角色及关联写入共享授权事实，任何失败都回滚整个批次。
+     */
     public static function change(Identity $identity, string $token, string $action, string $id, array $data, string $realm = 'platform', string $scopeId = 'platform'): array
     {
         if (!in_array($realm, ['platform', 'system'], true) || !str_starts_with($action, $realm . '.')) {
@@ -246,7 +268,9 @@ final class RoleService
         }, $realm, $scopeId);
     }
 
-    /** 是否持有本域有效超管角色；跨客户不能通过用户标识推导资格。 */
+    /**
+     * 是否持有本域有效超管角色；跨客户不能通过用户标识推导资格。
+     */
     public static function isAdministrator(string $realm, string $userId, string $tenant = ''): bool
     {
         if ($realm === 'system' && ExecutionScope::current()->binding('tenant_id') !== $tenant) {
@@ -256,7 +280,9 @@ final class RoleService
             ->whereHas('users', static fn (ModelQuery $users): ModelQuery => $users->where('id', '=', $userId))->exists();
     }
 
-    /** 包含停用角色的潜在授权；不能借重置密码、启用或重新分配接管高权限账号。 */
+    /**
+     * 包含停用角色的潜在授权；不能借重置密码、启用或重新分配接管高权限账号。
+     */
     private static function protectSubject(string $id, array $permissions, bool $super, string $realm, string $tenant): void
     {
         $user = self::userQuery($realm)->where('id', '=', $id)->with('roles')->first();
@@ -268,7 +294,9 @@ final class RoleService
         }
     }
 
-    /** 受保护角色的自动扩权资格只允许受保护超管授予。 */
+    /**
+     * 受保护角色的自动扩权资格只允许受保护超管授予。
+     */
     private static function manageable(Model $role, array $permissions, bool $super, string $realm): void
     {
         $grants = self::grantedPermissions($role, $realm);
@@ -277,7 +305,9 @@ final class RoleService
         }
     }
 
-    /** 每项关联带预期版本，单批至多一百人、每人六十四角色。 */
+    /**
+     * 每项关联带预期版本，单批至多一百人、每人六十四角色。
+     */
     private static function assign(Identity $identity, array $permissions, bool $super, array $data, string $realm, string $tenant): array
     {
         $roles = $data['roles'];
@@ -304,7 +334,9 @@ final class RoleService
         return ['updated' => count($users)];
     }
 
-    /** 角色只能关联平台已启用且操作者持有的节点；复制超管形成普通显式授权角色。 */
+    /**
+     * 角色只能关联平台已启用且操作者持有的节点；复制超管形成普通显式授权角色。
+     */
     private static function changeRole(Identity $identity, array $permissions, bool $super, string $operation, string $id, array $data, string $realm, string $tenant): array
     {
         $connection = Db::connection('default', true);
@@ -347,7 +379,7 @@ final class RoleService
             }
             if ($operation === 'delete') {
                 do {
-                    $users = self::userQuery($realm)->whereHas('roles', static fn (ModelQuery $query): ModelQuery => $query->where('id', '=', $id))->orderBy('id')->limit(100)->get();
+                    $users = self::userQuery($realm)->whereHas('roles', static fn (ModelQuery $query): ModelQuery => $query->where('id', '=', $id))->order('id')->limit(100)->get();
                     foreach ($users as $user) {
                         $user->relation('roles')->detach($id);
                         $user->touch();
@@ -380,7 +412,9 @@ final class RoleService
         }
     }
 
-    /** 显式加载授权关系；包含停用菜单事实，供防越权校验与目录展示复用。 */
+    /**
+     * 显式加载授权关系；包含停用菜单事实，供防越权校验与目录展示复用。
+     */
     private static function grantedPermissions(Model $role, string $realm): array
     {
         self::roleQuery($realm)->with('menus')->loadMissing([$role]);
@@ -396,7 +430,9 @@ final class RoleService
         return $realm === 'platform' ? PlatformUser::query()->master() : SystemUser::query()->master();
     }
 
-    /** 原生模型入口供人员管理事务复用，不按请求输入选择数据表。 */
+    /**
+     * 原生模型入口供人员管理事务复用，不按请求输入选择数据表。
+     */
     private static function roleQuery(string $realm): ModelQuery
     {
         return $realm === 'platform' ? PlatformRole::query()->master() : SystemRole::query()->master();

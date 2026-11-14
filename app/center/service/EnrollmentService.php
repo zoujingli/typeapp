@@ -13,9 +13,12 @@ use app\platform\model\Tenant;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Orm\Db;
+use Type\Orm\Page;
 use Type\Runtime\ExecutionScope;
 
-/** 平台签发注册资格的所有者；注册码、设备凭据和人员权限分别管理。 */
+/**
+ * 平台签发注册资格的所有者；注册码、设备凭据和人员权限分别管理。
+ */
 final class EnrollmentService
 {
     private const PUBLIC_FIELDS = ['id', 'tenant_id', 'name', 'capacity', 'registered_count', 'register_expires_at', 'enabled', 'recovery_verified', 'version', 'created_at', 'updated_at'];
@@ -45,7 +48,7 @@ final class EnrollmentService
         }
         if ($tenantId !== '') {
             return ExecutionScope::current()->run(static function (ExecutionScope $scope) use ($page, $perPage, $context): array {
-                $result = DeviceEnrollment::query()->master()->orderBy('created_at', 'DESC')->orderBy('id')->paginate($page, $perPage);
+                $result = DeviceEnrollment::query()->master()->order('created_at', 'DESC')->order('id')->paginate($page, $perPage);
                 $items = [];
                 foreach ($result->items() as $enrollment) {
                     $items[] = self::project($enrollment->project(self::PUBLIC_FIELDS));
@@ -86,10 +89,12 @@ final class EnrollmentService
         if ($row === null) {
             throw new HttpError(404, 'enrollment_not_found');
         }
-        $bindings = \_query(DeviceEnrollmentBinding::query()->master()->where('enrollment_id', '=', $id), [
-            'page' => $page, 'page_size' => $perPage,
-        ])->order(['registered_at' => 'registered_at', 'ownership_id' => 'ownership_id'], ['registered_at' => 'DESC', 'ownership_id' => 'ASC'])
-            ->paginatePage($perPage, 100, 100000);
+        $bindings = ExecutionScope::current()->run(static function () use ($row, $id, $page, $perPage): Page {
+            return \_query(DeviceEnrollmentBinding::query()->master()->where('tenant_id', '=', $row['tenant_id'])->where('enrollment_id', '=', $id), [
+                'page' => $page, 'page_size' => $perPage,
+            ])->order(['registered_at' => 'registered_at', 'ownership_id' => 'ownership_id'], ['registered_at' => 'DESC', 'ownership_id' => 'ASC'])
+                ->paginatePage($perPage, 100, 100000);
+        }, ['tenant_id' => $row['tenant_id']]);
         $items = [];
         foreach ($bindings->items() as $binding) {
             $items[] = $binding->project(['ownership_id', 'device_id', 'registered_at']);
@@ -197,7 +202,9 @@ final class EnrollmentService
         }
     }
 
-    /** 注册资格状态由当前期限推导，不通过 GET 写回数据库或修改设备状态。 */
+    /**
+     * 注册资格状态由当前期限推导，不通过 GET 写回数据库或修改设备状态。
+     */
     private static function project(array $row): array
     {
         foreach (['capacity', 'registered_count', 'register_expires_at', 'version', 'created_at', 'updated_at'] as $field) {

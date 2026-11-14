@@ -7,7 +7,9 @@ namespace Type\Runtime;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
 
-/** 单次执行的资源所有权；线程请求、Fiber 和协程均参与检查。 */
+/**
+ * 单次执行的资源所有权；线程请求、Fiber 和协程均参与检查。
+ */
 final class ExecutionScope
 {
     private const CURRENT_KEY = 'type.runtime.execution_scope';
@@ -26,8 +28,15 @@ final class ExecutionScope
 
     private array $bindings = [];
 
-    /** execution 服务缓存只属于本作用域，真实收尾完成后释放。 */
+    /**
+     * execution 服务缓存只属于本作用域，真实收尾完成后释放。
+     */
     private array $executionServices = [];
+
+    /**
+     * @var array<string, object> 当前作用域显式持有的对象，不进入字符串绑定。
+     */
+    private array $objects = [];
 
     private array $children = [];
 
@@ -161,11 +170,34 @@ final class ExecutionScope
         }
     }
 
-    /** 读取应用显式绑定的值；缺失返回 null，不从消息关联 context 推断身份。 */
+    /**
+     * 读取应用显式绑定的值；缺失返回 null，不从消息关联 context 推断身份。
+     */
     public function binding(string $name): ?string
     {
         $this->assertActive();
         return $this->bindings[$name] ?? null;
+    }
+
+    /**
+     * 持有本次工作的对象，例如当前 HTTP 请求。重复名称直接拒绝。
+     */
+    public function hold(string $name, object $value): void
+    {
+        $this->assertActive();
+        if ($name === '' || isset($this->objects[$name])) {
+            throw new \InvalidArgumentException('作用域对象绑定无效或重复');
+        }
+        $this->objects[$name] = $value;
+    }
+
+    /**
+     * 读取 hold 放入的对象；没有绑定时返回 null。
+     */
+    public function held(string $name): ?object
+    {
+        $this->assertActive();
+        return $this->objects[$name] ?? null;
     }
 
     /**
@@ -190,7 +222,9 @@ final class ExecutionScope
         return $this->executionServices[$id];
     }
 
-    /** 校验进程、线程、请求代次、协程和 Fiber 身份；清理时不要求仍处于 active。 */
+    /**
+     * 校验进程、线程、请求代次、协程和 Fiber 身份；清理时不要求仍处于 active。
+     */
     public function assertOwner(): void
     {
         $this->owner->assertCurrent();
@@ -273,6 +307,7 @@ final class ExecutionScope
             $this->childErrors = [];
             if ($this->resourcesClosed && $this->children === []) {
                 $this->executionServices = [];
+                $this->objects = [];
                 $this->state = 'closed';
                 $this->completion?->close();
             }
@@ -284,7 +319,9 @@ final class ExecutionScope
         }
     }
 
-    /** 返回 active、closing 或 closed；closing 可能仍持有未完成资源。 */
+    /**
+     * 返回 active、closing 或 closed；closing 可能仍持有未完成资源。
+     */
     public function state(): string
     {
         return $this->state;
@@ -310,19 +347,25 @@ final class ExecutionScope
         }
     }
 
-    /** 返回任务树共享的截止对象；缩短它会影响现有子任务。 */
+    /**
+     * 返回任务树共享的截止对象；缩短它会影响现有子任务。
+     */
     public function deadline(): Deadline
     {
         return $this->deadline;
     }
 
-    /** 供受管等待登记取消通知；取消只表达意图，不能代替 close 或真实完成。 */
+    /**
+     * 供受管等待登记取消通知；取消只表达意图，不能代替 close 或真实完成。
+     */
     public function cancellation(): Cancellation
     {
         return $this->cancellation;
     }
 
-    /** 角色停止时共享剩余清理预算；只影响等待，不提前释放仍在执行的资源。 */
+    /**
+     * 角色停止时共享剩余清理预算；只影响等待，不提前释放仍在执行的资源。
+     */
     public function limitCleanup(Deadline $deadline): void
     {
         if ($this->shutdownDeadline === null || ($deadline->remaining() ?? INF) < ($this->shutdownDeadline->remaining() ?? INF)) {
@@ -330,13 +373,17 @@ final class ExecutionScope
         }
     }
 
-    /** 返回创建时的上下文快照；修改返回数组不会影响当前或父作用域。 */
+    /**
+     * 返回创建时的上下文快照；修改返回数组不会影响当前或父作用域。
+     */
     public function context(): array
     {
         return $this->context;
     }
 
-    /** 返回当前作用域尚未完整收尾的直接子任务数量。 */
+    /**
+     * 返回当前作用域尚未完整收尾的直接子任务数量。
+     */
     public function activeTasks(): int
     {
         return $this->taskBudget->active();
@@ -384,6 +431,7 @@ final class ExecutionScope
                     $this->taskBudget->release();
                     if ($this->state === 'closing' && $this->resourcesClosed && $this->children === []) {
                         $this->executionServices = [];
+                $this->objects = [];
                         $this->state = 'closed';
                         $this->completion?->close();
                     }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace app\system\model;
 
-use Type\Orm\Attribute\BelongsToMany;
 use Type\Orm\Model;
 
 /**
@@ -19,23 +18,33 @@ use Type\Orm\Model;
  * @property-read int $created_at 创建时间，UTC Unix 秒。
  * @property-read int $version 资料并发版本。
  * @method static \Type\Orm\ModelQuery<static> query(string $alias = '')
+ * @method static \Type\Orm\ModelQuery<static> where(string|array $field, mixed $operator = null, mixed $value = null, string $boolean = 'AND')
+ * @method static \Type\Orm\ModelQuery<static> order(string $field, string $direction = 'ASC')
+ * @method static \Type\Orm\ModelQuery<static> limit(int $count, int $offset = 0)
+ * @method static \Type\Orm\ModelQuery<static> with(string $name, ?\Closure $relation = null)
  * @method static static|null find(int|string $id)
  * @method static static create(array $values)
  * @method static static firstOrCreate(array $identity, array $values = [])
+ * @method static bool destroy(int|string $id)
+ * @method static \Type\Orm\Helper\QueryHelper search(array $input = [], string $alias = '')
  */
 final class SystemRole extends Model
 {
     /** 通过当前角色关联的账号；访问前须显式加载。
-     * @var list<SystemUser>
+     * @return list<SystemUser>
      */
-    #[BelongsToMany(SystemUser::class, 'system_user_role', 'role_id', 'user_id', pivotTenant: 'tenant_id')]
-    public array $users;
+    public function users(): array
+    {
+        return $this->belongsToMany(SystemUser::class, 'system_user_role', 'role_id', 'user_id', pivotTenant: 'tenant_id');
+    }
 
     /** 通过角色授权关联的菜单；访问前须显式加载。
-     * @var list<SystemMenu> 共享菜单通过当前 Tenant 的角色关联授权
+     * @return list<SystemMenu> 共享菜单通过当前 Tenant 的角色关联授权
      */
-    #[BelongsToMany(SystemMenu::class, 'system_role_permission', 'role_id', 'permission', targetKey: 'permission', pivotTenant: 'tenant_id')]
-    public array $menus;
+    public function menus(): array
+    {
+        return $this->belongsToMany(SystemMenu::class, 'system_role_permission', 'role_id', 'permission', targetKey: 'permission', pivotTenant: 'tenant_id');
+    }
 
     protected string $table = 'system_role';
 

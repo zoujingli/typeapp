@@ -25,7 +25,9 @@ use Type\Runtime\ExecutionScope;
 use Type\Runtime\ProcessSignals;
 use Type\Runtime\TaskException;
 
-/** 以 Swoole 承接 HTTP；Unix worker、Windows 协程宿主及编译业务线程共用 PSR 处理链。 */
+/**
+ * 以 Swoole 承接 HTTP；Unix worker、Windows 协程宿主及编译业务线程共用 PSR 处理链。
+ */
 final class SwooleServer implements HttpServerInterface
 {
     private RequestHandlerInterface $handler;
@@ -71,7 +73,9 @@ final class SwooleServer implements HttpServerInterface
         $this->onWorkerStop = $onWorkerStop;
     }
 
-    /** Unix 使用经典单 worker，Windows 使用协程 HTTP 与控制事件停止；各路径均要求兼容的 Swoole。 */
+    /**
+     * Unix 使用经典单 worker，Windows 使用协程 HTTP 与控制事件停止；各路径均要求兼容的 Swoole。
+     */
     public function serve(string $host, int $port): void
     {
         if ($port < 1 || $port > 65535) {
@@ -261,7 +265,9 @@ final class SwooleServer implements HttpServerInterface
         }
     }
 
-    /** 由所属引擎等待在途作用域排空；不会提前释放连接资源。 */
+    /**
+     * 由所属引擎等待在途作用域排空；不会提前释放连接资源。
+     */
     public function stop(): void
     {
         $this->control->stop();
@@ -352,6 +358,7 @@ final class SwooleServer implements HttpServerInterface
             $messages['request'] = $request;
             $dispatching = true;
             $messages['response'] = $scope->run(function (ExecutionScope $current) use ($request): ResponseInterface {
+                $current->hold('http.request', $request);
                 return $this->handler->handle($request);
             });
         } catch (HttpError $error) {
@@ -387,7 +394,9 @@ final class SwooleServer implements HttpServerInterface
         }
     }
 
-    /** 原生配置与 PSR 处理链共用一处；编译线程额外启用已核验的输入与连接额度适配。 */
+    /**
+     * 原生配置与 PSR 处理链共用一处；编译线程额外启用已核验的输入与连接额度适配。
+     */
     private function configureCoroutineServer(Coroutine\Http\Server $server, bool $threaded): void
     {
         $settings = [
@@ -449,7 +458,9 @@ final class SwooleServer implements HttpServerInterface
         }
     }
 
-    /** 在监听所属协程启动原生接收循环；共享监听与自绑定监听使用相同的就绪和停止协议。 */
+    /**
+     * 在监听所属协程启动原生接收循环；共享监听与自绑定监听使用相同的就绪和停止协议。
+     */
     private function startThreadServer(Coroutine\Http\Server $server, Map $state): void
     {
         if ($state['stop'] === true) {

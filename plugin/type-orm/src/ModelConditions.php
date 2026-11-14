@@ -4,13 +4,19 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-/** 模型条件组统一执行字段映射与编码，不能注入未声明列。 */
+/**
+ * 模型条件组统一执行字段映射与编码，不能注入未声明列。
+ */
 final class ModelConditions
 {
-    /** @internal 绑定模型映射、同一连接的条件与可选关联别名。 */
+    /**
+     * @internal 绑定模型映射、同一连接的条件与可选关联别名。
+     */
     public function __construct(private ModelDefinition $definition, private Conditions $conditions, private string $qualifier = '') {}
 
-    /** 字段值先按模型类型规范化；null 仅用于显式空值比较。 */
+    /**
+     * 字段值先按模型类型规范化；null 仅用于显式空值比较。
+     */
     public function where(string $field, string $operator, mixed $value, string $boolean = 'AND'): ModelConditions
     {
         $mapping = $this->definition->field($field);
@@ -24,19 +30,37 @@ final class ModelConditions
         return $copy;
     }
 
-    /** OR 与已有条件按调用顺序括号化组合。 */
+    /**
+     * 按模型字段做包含式匹配。模式已由查询助手转义，这里只校验字段名。
+     */
+    public function whereLike(string $field, string $pattern, string $boolean = 'AND'): ModelConditions
+    {
+        $this->definition->field($field);
+        $copy = clone $this;
+        $copy->conditions = $this->conditions->whereLike($this->column($field), $pattern, $boolean);
+
+        return $copy;
+    }
+
+    /**
+     * OR 与已有条件按调用顺序括号化组合。
+     */
     public function orWhere(string $field, string $operator, mixed $value): ModelConditions
     {
         return $this->where($field, $operator, $value, 'OR');
     }
 
-    /** 显式匹配 null 或非 null。 */
+    /**
+     * 显式匹配 null 或非 null。
+     */
     public function whereNull(string $field, bool $not = false, string $boolean = 'AND'): ModelConditions
     {
         return $this->where($field, $not ? '!=' : '=', null, $boolean);
     }
 
-    /** 集合逐值编码，空集合由共同条件实现保留恒真/恒假语义。 */
+    /**
+     * 集合逐值编码，空集合由共同条件实现保留恒真/恒假语义。
+     */
     public function whereIn(string $field, array $values, bool $not = false, string $boolean = 'AND'): ModelConditions
     {
         $mapping = $this->definition->field($field);
@@ -49,13 +73,17 @@ final class ModelConditions
         return $copy;
     }
 
-    /** 排除集合内的值。 */
+    /**
+     * 排除集合内的值。
+     */
     public function whereNotIn(string $field, array $values): ModelConditions
     {
         return $this->whereIn($field, $values, true);
     }
 
-    /** JSON 路径只适用于 JSON 字段，值的标量类型由数据库方言保持。 */
+    /**
+     * JSON 路径只适用于 JSON 字段，值的标量类型由数据库方言保持。
+     */
     public function whereJson(string $field, array $path, mixed $value, string $boolean = 'AND'): ModelConditions
     {
         if ($this->definition->field($field)->typeName() !== 'json') {
@@ -66,7 +94,9 @@ final class ModelConditions
         return $copy;
     }
 
-    /** @param \Closure(ModelConditions): ModelConditions $group 返回非空模型条件组。 */
+    /**
+     * @param \Closure(ModelConditions): ModelConditions $group 返回非空模型条件组。
+     */
     public function whereGroup(\Closure $group, string $boolean = 'AND'): ModelConditions
     {
         $definition = $this->definition;
@@ -82,7 +112,9 @@ final class ModelConditions
         return $copy;
     }
 
-    /** @internal 交还已经映射的共同条件。 */
+    /**
+     * @internal 交还已经映射的共同条件。
+     */
     public function conditions(): Conditions
     {
         return $this->conditions;

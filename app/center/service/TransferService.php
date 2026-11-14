@@ -26,13 +26,17 @@ use Type\Orm\Db;
 use Type\Orm\ModelConditions;
 use Type\Runtime\ExecutionScope;
 
-/** 平台结束使用关系、旧授权隔离及目标客户接收的持久所有者。 */
+/**
+ * 平台结束使用关系、旧授权隔离及目标客户接收的持久所有者。
+ */
 final class TransferService
 {
     private const RELATION_FIELDS = ['id', 'device_id', 'device_name', 'source_tenant_id', 'target_tenant_id', 'ownership_id', 'new_ownership_id',
         'kind', 'status', 'requires_store', 'isolation_id', 'access_version', 'version', 'created_at', 'updated_at'];
 
-    /** 原始通信的当前关系逐动作核对；未完成转换的旧设备不可接入。 */
+    /**
+     * 原始通信的当前关系逐动作核对；未完成转换的旧设备不可接入。
+     */
     public static function ownershipCurrent(Connection $connection, array $device): bool
     {
         if ($device['transfer_id'] !== null) {
@@ -46,7 +50,9 @@ final class TransferService
         }, ['tenant_id' => $device['tenant_id']]);
     }
 
-    /** 平台显式设置使用期限；保存原授权来源，到期收尾不重新借用已退出的人员会话。 */
+    /**
+     * 平台显式设置使用期限；保存原授权来源，到期收尾不重新借用已退出的人员会话。
+     */
     public static function expiry(Identity $identity, string $deviceId, int $version, ?int $expiresAt): array
     {
         if ($expiresAt !== null && ($expiresAt <= time() || $expiresAt > 4102444800)) {
@@ -150,7 +156,9 @@ final class TransferService
         }
     }
 
-    /** 两端仅查看自身可见的操作与真实阶段；查询不发起持久清理。 */
+    /**
+     * 两端仅查看自身可见的操作与真实阶段；查询不发起持久清理。
+     */
     public static function reassignments(Identity $identity, string $realm, string $tenant, int $page, int $perPage, string $id = ''): array
     {
         $context = RoleService::readContext($identity, $realm, $tenant, ($realm === 'system' ? 'center' : 'platform') . '.reassignments.read');
@@ -278,7 +286,9 @@ final class TransferService
         }, 'platform', 'platform');
     }
 
-    /** 目标客户确认后才建立新关系和一次性凭据；丢失响应用既有轮换恢复，不重放秘密。 */
+    /**
+     * 目标客户确认后才建立新关系和一次性凭据；丢失响应用既有轮换恢复，不重放秘密。
+     */
     public static function acceptRelationship(Identity $identity, string $tenant, string $id, int $version, string $acceptId): array
     {
         return RoleService::authorized($identity, null, 'center.reassignments.accept', static function (Identity $current, array $permissions) use ($tenant, $id, $version, $acceptId): array {
@@ -311,12 +321,15 @@ final class TransferService
                 throw new HttpError(409, 'reassignment_relationship_changed');
             }
             $ownershipId = bin2hex(random_bytes(16));
-            DeviceOwnership::create(['id' => $ownershipId, 'device_id' => $device['id'], 'started_at' => time(), 'ended_at' => null,
+            DeviceOwnership::create(['id' => $ownershipId, 'tenant_id' => $tenant, 'device_id' => $device['id'], 'started_at' => time(), 'ended_at' => null,
                 'expires_at' => null, 'expiry_context' => null, 'access_started' => false]);
             // 改归属是受控的跨租户基础设施操作；Model 禁止直接改变已加载实体的租户身份。
-            $connection->table('center_device')->where('id', '=', $device['id'])->where('ownership_id', '=', $record->getOwnershipId())
+            $connection->table('center_device')->where('tenant_id', '=', $record->getSourceTenantId())->where('id', '=', $device['id'])->where('ownership_id', '=', $record->getOwnershipId())
                 ->where('transfer_id', '=', $id)->update(['tenant_id' => $tenant, 'product_id' => null, 'ownership_id' => $ownershipId, 'lifecycle' => 'inactive',
                     'transfer_id' => null, 'transfer_frozen' => 0, 'version' => (int)$device['version'] + 1, 'updated_at' => time()]);
+            $connection->table('center_device_connection')->where('tenant_id', '=', $record->getSourceTenantId())->where('device_id', '=', $device['id'])
+                ->where('ownership_id', '=', $record->getOwnershipId())->update(['tenant_id' => $tenant, 'ownership_id' => $ownershipId,
+                    'status' => 'unknown', 'owner_id' => null, 'node_id' => null, 'run_id' => null, 'observed_at' => null]);
             $deviceConnection = DeviceConnection::query()->master()->find($device['id']);
             if ($deviceConnection === null) {
                 throw new HttpError(409, 'reassignment_connection_missing');
@@ -340,7 +353,9 @@ final class TransferService
         }, 'system', $tenant);
     }
 
-    /** 调用者已持有授权写锁；领域变更、所有应用撤权与审计一起提交。 */
+    /**
+     * 调用者已持有授权写锁；领域变更、所有应用撤权与审计一起提交。
+     */
     private static function beginRelationship(Connection $connection, array $row, string $id, ?string $target, string $kind, array $context): array
     {
         if ($row['transfer_id'] !== null || $row['lifecycle'] === 'retired') {
@@ -405,7 +420,7 @@ final class TransferService
             if ($requiresStore) {
                 $isolationId = DeviceService::invalidateCredential($connection, $row, $context, true);
             } else {
-                DeviceCredential::query()->master()->where('device_id', '=', $row['id'])->where('ownership_id', '=', $row['ownership_id'])
+                DeviceCredential::query()->master()->where('tenant_id', '=', $row['tenant_id'])->where('device_id', '=', $row['id'])->where('ownership_id', '=', $row['ownership_id'])
                     ->where('status', '=', 'active')->update(['status' => 'revoked', 'revoked_at' => time()]);
             }
             if ($ownership->getEndedAt() === null) {
@@ -444,7 +459,9 @@ final class TransferService
         return $record;
     }
 
-    /** session_terminate 回执已含全部旧所有者的 fence 和持久清理，不以管理连接离线推断完成。 */
+    /**
+     * session_terminate 回执已含全部旧所有者的 fence 和持久清理，不以管理连接离线推断完成。
+     */
     private static function relationshipIsolated(Connection $connection, DeviceReassignment $record): bool
     {
         if ($record->getIsolationId() !== null) {
@@ -473,7 +490,9 @@ final class TransferService
         return $row;
     }
 
-    /** 一份真实来源分别留下平台与双方客户的可见记录，不复制任何密钥。 */
+    /**
+     * 一份真实来源分别留下平台与双方客户的可见记录，不复制任何密钥。
+     */
     private static function relationshipAudit(Connection $connection, DeviceReassignment $record, array $context, string $action): void
     {
         $details = ['device_id' => $record->getDeviceId(), 'ownership_id' => $record->getOwnershipId(), 'version' => $record->getVersion(), 'context' => 'device-reassignment'];

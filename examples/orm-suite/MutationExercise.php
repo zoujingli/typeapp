@@ -23,10 +23,14 @@ use Type\Orm\TransactionException;
 use Type\Orm\TransactionOutcome;
 use Type\Runtime\ExecutionScope;
 
-/** 三库与独立 AOT 消费者共用的集合写入、读取组合和提交后事务回归。 */
+/**
+ * 三库与独立 AOT 消费者共用的集合写入、读取组合和提交后事务回归。
+ */
 final class MutationExercise
 {
-    /** 在专属三库表验证完整集合写入、租户与软删除约束、算术回滚和关系加载身份。 */
+    /**
+     * 在专属三库表验证完整集合写入、租户与软删除约束、算术回滚和关系加载身份。
+     */
     public static function run(ExecutionScope $scope): void
     {
         $connection = Db::connection('default', true);
@@ -55,7 +59,7 @@ final class MutationExercise
             $offset = $base->orderBy('id')->limit(3, 1);
             self::check($offset->get()[0]->id === 2 && $offset->first()->id === 2 && $offset->firstOrFail()->id === 2
                 && $base->find(2)->id === 2 && $base->limit(1, 1)->find(2) === null, 'first 或主键查询丢失偏移');
-            $alias = MutationRecord::query('r')->orderBy('value')->select(['title']);
+            $alias = MutationRecord::query('r')->order('value')->select(['title']);
             self::check(
                 $alias->paginate(2, 1)->items()[0]->id === 2 && $alias->simplePaginate(2, 1)->items()[0]->id === 2,
                 '别名单表无法组合普通分页'
@@ -132,7 +136,9 @@ final class MutationExercise
         }, ['tenant_id' => 'tenant-a']);
     }
 
-    /** 在当前专属数据库与租户作用域验证受管时间，不以等待时钟推进或模拟驱动代替写入。 */
+    /**
+     * 在当前专属数据库与租户作用域验证受管时间，不以等待时钟推进或模拟驱动代替写入。
+     */
     public static function timestamps(Connection $connection): void
     {
         $date = match ($connection->driverName()) {
@@ -293,7 +299,9 @@ final class MutationExercise
         }
     }
 
-    /** 外层提交事实与提交后新事务结果分别保留，未知结果不允许自动重试。 */
+    /**
+     * 外层提交事实与提交后新事务结果分别保留，未知结果不允许自动重试。
+     */
     public static function callbacks(Driver $driver): array
     {
         $manager = new DatabaseManager(['default' => $driver], 2, 0);
@@ -369,7 +377,9 @@ final class MutationExercise
         }
     }
 
-    /** MySQL 无符号列也遵守 integer 模型的 PHP 值域，不能成功写入后才在水合时报错。 */
+    /**
+     * MySQL 无符号列也遵守 integer 模型的 PHP 值域，不能成功写入后才在水合时报错。
+     */
     private static function unsignedIntegerArithmetic(Connection $connection): void
     {
         foreach ([false, true] as $versioned) {
@@ -418,7 +428,9 @@ final class MutationExercise
         }
     }
 
-    /** 一份字段声明验证批量创建、SQL 空值、精确聚合和租户/软删除范围，不用数组结果替代模型行为。 */
+    /**
+     * 一份字段声明验证批量创建、SQL 空值、精确聚合和租户/软删除范围，不用数组结果替代模型行为。
+     */
     private static function insertAndAggregate(Connection $connection, ExecutionScope $scope): void
     {
         $date = match ($connection->driverName()) {
@@ -500,7 +512,9 @@ final class MutationExercise
         self::generatedInsert();
     }
 
-    /** 模型整数映射不能把文本的字典序或数据库隐式转换当作数值语义。 */
+    /**
+     * 模型整数映射不能把文本的字典序或数据库隐式转换当作数值语义。
+     */
     private static function integerStorage(Connection $connection): void
     {
         $shortType = $connection->driverName() === 'sqlite' ? 'INT2' : 'SMALLINT';
@@ -546,7 +560,9 @@ final class MutationExercise
         self::check($connection->table('type_suite_integer_storage')->orderBy('id')->pluck('text_value') === ['2', '10'], '被拒绝的整数算术修改了原文本值');
     }
 
-    /** 批次校验和 SQL 末行错误必须保留完整原始状态，保存点失败不能污染外层事务。 */
+    /**
+     * 批次校验和 SQL 末行错误必须保留完整原始状态，保存点失败不能污染外层事务。
+     */
     private static function insertRejections(Connection $connection, ModelQuery $query, array $row): void
     {
         foreach (['version' => 9, 'deleted_at' => null] as $protected => $value) {
@@ -594,7 +610,9 @@ final class MutationExercise
         }), 'rollback') && $query->find(10) === null && $query->count() === 3, '保存点后不能继续写入、外层回滚未覆盖新增或校验写入了部分批次');
     }
 
-    /** 生成模型批量写入后正常水合，覆盖自动主键、JSON、精确字段及 DateTime 的开发/AOT 路径。 */
+    /**
+     * 生成模型批量写入后正常水合，覆盖自动主键、JSON、精确字段及 DateTime 的开发/AOT 路径。
+     */
     private static function generatedInsert(): void
     {
         $values = ['name' => '批量模型水合', 'active' => true, 'external_id' => '123456789012345678901234567890',
@@ -611,7 +629,9 @@ final class MutationExercise
         self::check($user->delete(), '批量生成模型未能按模型生命周期删除');
     }
 
-    /** 无版本模型的整条算术写入覆盖约束、触发器、保存点和万行成功路径。 */
+    /**
+     * 无版本模型的整条算术写入覆盖约束、触发器、保存点和万行成功路径。
+     */
     private static function unversionedArithmetic(Connection $connection): void
     {
         $connection->execute('CREATE TABLE type_suite_counters (id INTEGER PRIMARY KEY, tenant_id VARCHAR(50) NOT NULL, '
@@ -656,7 +676,9 @@ final class MutationExercise
         );
     }
 
-    /** 用真实数据库配置及触发器验证整条写入失败，避免约束被静默跳过。 */
+    /**
+     * 用真实数据库配置及触发器验证整条写入失败，避免约束被静默跳过。
+     */
     private static function storageEdges(Connection $connection, ModelQuery $base): void
     {
         if ($connection->driverName() === 'mysql') {
@@ -718,7 +740,9 @@ final class MutationExercise
     }
 }
 
-/** 手写映射回归，证明相同属性名不能代替完整映射身份。 */
+/**
+ * 手写映射回归，证明相同属性名不能代替完整映射身份。
+ */
 final class MappingProbe extends Model
 {
     /**

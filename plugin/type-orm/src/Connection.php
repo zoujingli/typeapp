@@ -8,7 +8,9 @@ use Type\Runtime\ExecutionScope;
 use Type\Runtime\ResourceLease;
 use Type\Runtime\ReusableResource;
 
-/** 执行作用域中的数据库租约；集中管理参数绑定、事务事实、模型失效与查询诊断。 */
+/**
+ * 执行作用域中的数据库租约；集中管理参数绑定、事务事实、模型失效与查询诊断。
+ */
 final class Connection
 {
     private ResourceLease $lease;
@@ -66,25 +68,41 @@ final class Connection
         return $this->operation(static fn (PdoSession $session): array => $session->query($sql, $parameters), $sql, $parameters);
     }
 
-    /** 为基础设施或跨模型投影建立不可变表查询；业务实体优先使用 Model。 */
+    /**
+     * 为基础设施或跨模型投影建立不可变表查询；业务实体优先使用 Model。
+     */
     public function table(string $table, string $alias = ''): Query
     {
         return new Query($this, $table, $alias);
     }
 
-    /** 从当前租约读取方言名称，已归还或错误执行者的租约会被拒绝。 */
+    /**
+     * 从当前租约读取方言名称，已归还或错误执行者的租约会被拒绝。
+     */
     public function driverName(): string
     {
         return $this->session()->driverName();
     }
 
-    /** 读取实际服务器版本供能力选择；活跃结果流期间不能插入该操作。 */
+    /**
+     * 返回当前租约的驱动，已归还或错误执行者的租约会被拒绝。
+     */
+    public function driver(): Driver
+    {
+        return $this->session()->driver();
+    }
+
+    /**
+     * 读取实际服务器版本供能力选择；活跃结果流期间不能插入该操作。
+     */
     public function serverVersion(): string
     {
         return $this->session()->serverVersion();
     }
 
-    /** 返回实际解析到的表列，包含临时表遮蔽；标识符始终校验。 */
+    /**
+     * 返回实际解析到的表列，包含临时表遮蔽；标识符始终校验。
+     */
     public function columns(string $table): array
     {
         $session = $this->session();
@@ -197,7 +215,9 @@ final class Connection
         return array_values($indexes);
     }
 
-    /** @internal 核验实际解析到的 MySQL 表及会话，避免非事务表留下部分集合写入。 */
+    /**
+     * @internal 核验实际解析到的 MySQL 表及会话，避免非事务表留下部分集合写入。
+     */
     public function assertAtomicWriteStorage(string $table): void
     {
         if ($this->driverName() !== 'mysql') {
@@ -214,7 +234,9 @@ final class Connection
         }
     }
 
-    /** 流关闭前独占本租约；事务内应使用普通查询或在独立连接导出。 */
+    /**
+     * 流关闭前独占本租约；事务内应使用普通查询或在独立连接导出。
+     */
     public function stream(string $sql, array $parameters = [], int $batchSize = 250, int $maxRowBytes = 1048576): RowStream
     {
         if ($batchSize < 1 || $batchSize > 1000 || $maxRowBytes < 1 || $maxRowBytes > 16777216) {
@@ -254,20 +276,26 @@ final class Connection
         return $this->operation(static fn (PdoSession $session): int => $session->execute($sql, $parameters), $sql, $parameters, 'raw', true);
     }
 
-    /** 原生查询结果不代表没有副作用，归还租约时同样退役物理会话。 */
+    /**
+     * 原生查询结果不代表没有副作用，归还租约时同样退役物理会话。
+     */
     public function rawQuery(string $sql, array $parameters = []): array
     {
         $this->recordRead(count($parameters));
         return $this->operation(static fn (PdoSession $session): array => $session->query($sql, $parameters), $sql, $parameters, 'raw-query', true);
     }
 
-    /** 读取同一物理会话最近生成的主键文本；需在租约归还之前调用。 */
+    /**
+     * 读取同一物理会话最近生成的主键文本；需在租约归还之前调用。
+     */
     public function lastInsertId(): string
     {
         return $this->session()->lastInsertId();
     }
 
-    /** @param \Closure(Connection): mixed $operation 始终接收当前事务连接，异常时回滚。 */
+    /**
+     * @param \Closure(Connection): mixed $operation 始终接收当前事务连接，异常时回滚。
+     */
     public function transaction(\Closure $operation, string $mode = 'default'): mixed
     {
         $this->session()->assertIdle();
@@ -279,19 +307,25 @@ final class Connection
         });
     }
 
-    /** 返回当前连接活动事务帧数；内层帧对应保存点。 */
+    /**
+     * 返回当前连接活动事务帧数；内层帧对应保存点。
+     */
     public function transactionDepth(): int
     {
         return count($this->transactions);
     }
 
-    /** 返回当前连接最近的事务事实；提交后回调里的新事务可以推进该状态。 */
+    /**
+     * 返回当前连接最近的事务事实；提交后回调里的新事务可以推进该状态。
+     */
     public function transactionOutcome(): string
     {
         return $this->outcome;
     }
 
-    /** @param \Closure(): mixed $callback 提交确认后零参数调用，返回值忽略。 */
+    /**
+     * @param \Closure(): mixed $callback 提交确认后零参数调用，返回值忽略。
+     */
     public function afterCommit(\Closure $callback): void
     {
         $this->session();
@@ -306,7 +340,9 @@ final class Connection
         $this->transactions[$index] = $frame;
     }
 
-    /** @internal 水合、保存、删除均登记；内层成功后合并至父事务。 */
+    /**
+     * @internal 水合、保存、删除均登记；内层成功后合并至父事务。
+     */
     public function trackModel(Model $model): void
     {
         if ($this->transactions === []) {
@@ -323,13 +359,17 @@ final class Connection
         }
     }
 
-    /** 检查租约是否已归还，不能据此绕过执行者或作用域检查。 */
+    /**
+     * 检查租约是否已归还，不能据此绕过执行者或作用域检查。
+     */
     public function released(): bool
     {
         return $this->lease->released();
     }
 
-    /** 停止当前租约，后续操作拒绝；持有中的原生操作完成前不会转借会话。 */
+    /**
+     * 停止当前租约，后续操作拒绝；持有中的原生操作完成前不会转借会话。
+     */
     public function close(): void
     {
         if ($this->notifying) {
@@ -360,7 +400,9 @@ final class Connection
         return $log;
     }
 
-    /** 当前逻辑连接的调用统计；只保留最近 128 次读取的参数数量。 */
+    /**
+     * 当前逻辑连接的调用统计；只保留最近 128 次读取的参数数量。
+     */
     public function statistics(): array
     {
         return ['read_attempts' => $this->reads, 'write_attempts' => $this->writes, 'recent_read_parameter_sizes' => $this->readParameterSizes];

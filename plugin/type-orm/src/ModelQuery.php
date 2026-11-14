@@ -51,7 +51,9 @@ final class ModelQuery
 
     private array $arithmeticChecks = [];
 
-    /** @param \Closure(array): TModel $hydrate 接收数据库行并返回对应模型。 */
+    /**
+     * @param \Closure(array): TModel $hydrate 接收数据库行并返回对应模型。
+     */
     public function __construct(ModelDefinition $definition, \Closure $hydrate, string $alias = '')
     {
         $this->execution = ExecutionScope::current();
@@ -101,8 +103,25 @@ final class ModelQuery
      * 按模型属性编码比较值并返回新查询，租户与软删除范围在执行时统一加入。
      * @return ModelQuery<TModel>
      */
-    public function where(string $field, string $operator, mixed $value, string $boolean = 'AND'): ModelQuery
+    public function where(string|array $field, mixed $operator = null, mixed $value = null, string $boolean = 'AND'): ModelQuery
     {
+        if (is_array($field)) {
+            $query = $this;
+            foreach ($field as $name => $item) {
+                if (!is_string($name)) {
+                    throw new ModelException('unknown_field', '模型筛选字段名必须是字符串');
+                }
+                $query = $query->where($name, '=', $item, $boolean);
+            }
+            return $query;
+        }
+        if (func_num_args() < 3) {
+            $value = $operator;
+            $operator = '=';
+        }
+        if (!is_string($operator) || $operator === '') {
+            throw new ModelException('invalid_operator', '模型比较符无效');
+        }
         if ($this->query === null) {
             $this->definition->field($field);
             return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->where($field, $operator, $value, $boolean));
@@ -110,6 +129,22 @@ final class ModelQuery
         $copy = clone $this;
         $mapping = $this->definition->field($field);
         $copy->query = $this->query->where($this->column($field), $operator, $value === null ? null : $mapping->encode($mapping->normalize($value)), $boolean);
+        return $copy;
+    }
+
+    /**
+     * 按模型字段做包含式匹配。模式由查询助手转义，不按字段类型改写。
+     *
+     * @return ModelQuery<TModel>
+     */
+    public function whereLike(string $field, string $pattern, string $boolean = 'AND'): ModelQuery
+    {
+        if ($this->query === null) {
+            $this->definition->field($field);
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->whereLike($field, $pattern, $boolean));
+        }
+        $copy = clone $this;
+        $copy->query = $this->query->whereLike($this->column($field), $pattern, $boolean);
         return $copy;
     }
 
@@ -211,7 +246,9 @@ final class ModelQuery
         return $copy;
     }
 
-    /** 只生成 SQL，不做存储目录查询或模型水合。 */
+    /**
+     * 只生成 SQL，不做存储目录查询或模型水合。
+     */
     public function toSql(): string
     {
         if ($this->query === null) {
@@ -220,7 +257,9 @@ final class ModelQuery
         return $this->readingQuery(false)->toSql();
     }
 
-    /** 显式预览原始绑定值，不执行目标查询。 */
+    /**
+     * 显式预览原始绑定值，不执行目标查询。
+     */
     public function bindings(): array
     {
         if ($this->query === null) {
@@ -256,17 +295,17 @@ final class ModelQuery
     }
 
     /**
-     * 按映射属性排序，方向只接受 ASC/DESC；保留原查询。
+     * 按模型字段排序，方向只接受 ASC 或 DESC；表查询仍使用 Query::orderBy。
      * @return ModelQuery<TModel>
      */
-    public function orderBy(string $field, string $direction = 'ASC'): ModelQuery
+    public function order(string $field, string $direction = 'ASC'): ModelQuery
     {
         if (!in_array(strtoupper($direction), ['ASC', 'DESC'], true)) {
             throw new DatabaseException('排序方向只支持 ASC 或 DESC');
         }
         if ($this->query === null) {
             $this->definition->field($field);
-            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->orderBy($field, $direction));
+            return $this->defer(static fn (ModelQuery $query): ModelQuery => $query->order($field, $direction));
         }
         $copy = clone $this;
         $copy->query = $this->query->orderBy($this->column($field), $direction);
@@ -327,7 +366,9 @@ final class ModelQuery
         return $this->hydrateRows($this->readingQuery()->get());
     }
 
-    /** @internal 关联与批量消费者使用显式共享预算；不无界物化一对多结果。 */
+    /**
+     * @internal 关联与批量消费者使用显式共享预算；不无界物化一对多结果。
+     */
     public function getBounded(int $maxRows, ?ReadBudget $budget = null): array
     {
         if ($this->query === null) {
@@ -360,7 +401,9 @@ final class ModelQuery
         return new Page($this->hydrateRows($result->items(), $budget), $result->total(), $result->number(), $result->perPage());
     }
 
-    /** 无总数分页，模型与预加载结果共享读取预算。 */
+    /**
+     * 无总数分页，模型与预加载结果共享读取预算。
+     */
     public function simplePaginate(int $page = 1, int $perPage = 20, int $maxRows = 10000): SimplePage
     {
         if ($this->query === null) {
@@ -503,7 +546,9 @@ final class ModelQuery
         return $this->withAggregate($path, 'SUM', $field, $constraint, $alias ?? str_replace('.', '_', $path) . '_' . $field . '_sum');
     }
 
-    /** 已有模型列表显式批量补加载；父模型不重查，所有关系共享预算。 */
+    /**
+     * 已有模型列表显式批量补加载；父模型不重查，所有关系共享预算。
+     */
     public function load(array $models, bool $missingOnly = false, int $maxRows = 10000): array
     {
         if ($this->query === null) {
@@ -513,7 +558,9 @@ final class ModelQuery
         return $this->loadWithBudget($models, $missingOnly, $budget);
     }
 
-    /** 只补尚未加载的关系，深层路径继续复用已加载子列表。 */
+    /**
+     * 只补尚未加载的关系，深层路径继续复用已加载子列表。
+     */
     public function loadMissing(array $models, int $maxRows = 10000): array
     {
         return $this->load($models, true, $maxRows);
@@ -583,7 +630,7 @@ final class ModelQuery
         if ($this->limited) {
             throw new ModelException('relation_limit_unsupported', '批量预加载不把全局 LIMIT 伪装成每个父记录的限制');
         }
-        return $this->orderBy($this->definition->key());
+        return $this->order($this->definition->key());
     }
 
     /**
@@ -608,7 +655,9 @@ final class ModelQuery
         return $this->where($this->definition->key(), '=', $id)->first();
     }
 
-    /** 不水合模型、不加载关系地检查匹配行。 */
+    /**
+     * 不水合模型、不加载关系地检查匹配行。
+     */
     public function exists(): bool
     {
         if ($this->query === null) {
@@ -635,7 +684,9 @@ final class ModelQuery
         return $this->where($this->definition->key(), '=', $id)->firstOrFail();
     }
 
-    /** 只读取所需字段并按模型类型转换，空结果返回 null。 */
+    /**
+     * 只读取所需字段并按模型类型转换，空结果返回 null。
+     */
     public function value(string $field): mixed
     {
         if ($this->query === null) {
@@ -647,7 +698,9 @@ final class ModelQuery
         return $row === null ? null : $mapping->normalize($row['__type_value'], true);
     }
 
-    /** 返回类型化字段列表或唯一键映射，不水合无关模型。 */
+    /**
+     * 返回类型化字段列表或唯一键映射，不水合无关模型。
+     */
     public function pluck(string $field, ?string $key = null): array
     {
         if ($this->query === null) {
@@ -664,13 +717,17 @@ final class ModelQuery
         return $result;
     }
 
-    /** 原子修改普通数值字段；失败回滚整条写入，已有模型不刷新，声明的版本字段同时递增。 */
+    /**
+     * 原子修改普通数值字段；失败回滚整条写入，已有模型不刷新，声明的版本字段同时递增。
+     */
     public function increment(string $field, int $amount = 1): int
     {
         return $this->arithmetic($field, $amount, false);
     }
 
-    /** 原子递减遵守相同写入保护与真实影响行数语义。 */
+    /**
+     * 原子递减遵守相同写入保护与真实影响行数语义。
+     */
     public function decrement(string $field, int $amount = 1): int
     {
         return $this->arithmetic($field, $amount, true);
@@ -759,7 +816,9 @@ final class ModelQuery
         return $this->updateBatch($query, $encoded);
     }
 
-    /** 单条 SQL 集合删除；软删除只处理尚未删除的行，不触发逐模型事件或领域级联。 */
+    /**
+     * 单条 SQL 集合删除；软删除只处理尚未删除的行，不触发逐模型事件或领域级联。
+     */
     public function delete(): int
     {
         if ($this->query === null) {
@@ -794,7 +853,9 @@ final class ModelQuery
         return $copy;
     }
 
-    /** 计数当前可见模型行，不水合模型或预加载关系。 */
+    /**
+     * 计数当前可见模型行，不水合模型或预加载关系。
+     */
     public function count(): int
     {
         if ($this->query === null) {
@@ -1160,7 +1221,9 @@ final class ModelQuery
         return $this->mutate($query, static fn (Query $target): int => $target->adjust($mapping->column(), $amount, $decrement, $versionColumn, $integer, $timestamps));
     }
 
-    /** 完整规范化和编码后才允许执行写入；同一批次只采样一次受管时间。 */
+    /**
+     * 完整规范化和编码后才允许执行写入；同一批次只采样一次受管时间。
+     */
     private function insertBatch(array $rows): array
     {
         if (!array_is_list($rows)) {
@@ -1283,7 +1346,9 @@ final class ModelQuery
         return $target;
     }
 
-    /** 先转换普通输入，再补受管字段；修改器不得改变可信租户或生命周期初值。 */
+    /**
+     * 先转换普通输入，再补受管字段；修改器不得改变可信租户或生命周期初值。
+     */
     private function insertValues(array $row, array $timestamps): array
     {
         $tenant = $this->definition->tenantField();
@@ -1336,7 +1401,9 @@ final class ModelQuery
         return $this->mutate($query, static fn (Query $target): int => $target->updateGuarded($values, $column));
     }
 
-    /** 编码同一次集合写入的更新时间，继续校验数据库实际时间精度。 */
+    /**
+     * 编码同一次集合写入的更新时间，继续校验数据库实际时间精度。
+     */
     private function updateTimestamps(?\DateTimeImmutable $instant = null): array
     {
         $timestamps = $this->definition->writeTimestamps(false, $instant);
@@ -1389,7 +1456,9 @@ final class ModelQuery
         }, $mode);
     }
 
-    /** 聚合结果不会经过展示获取器；SUM/AVG 的精度范围独立于每个被聚合字段。 */
+    /**
+     * 聚合结果不会经过展示获取器；SUM/AVG 的精度范围独立于每个被聚合字段。
+     */
     private function scalarAggregate(string $function, string $field): mixed
     {
         $mapping = $this->definition->field($field);

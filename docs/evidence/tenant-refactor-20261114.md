@@ -294,3 +294,15 @@ MQTT 授权主体的固定字段（主体名称、登录名、接入密码、轮
 - 使用 `operator` 登录后，服务端菜单只返回“系统工作台”，用户与权限、物联中心、系统管理均不显示；工作台无可读取统计和快捷入口，证明前端导航和后端数据读取共同遵循角色权限。
 
 该批次覆盖当前 Tenant 内角色创建、权限树、启停确认、用户角色绑定和登录后权限收敛；平台 RBAC、超管保护和跨 Tenant 隔离另有三库 HTTP 证据，Windows/Linux profile 与真实 DNS/TLS 仍未验证。使用当前 `web/dist`、SQLite AOT API、Vite 8.3.8 和两个独立 Chromium 会话执行，临时服务、浏览器和测试目录已清理。
+
+## 2026-11-14 当前工作区 Tenant 支撑事实约束复核
+
+本轮为 `DeviceCredential`、`DeviceConnection` 和 `DeviceEnrollmentBinding` 增加不可变 `tenant_id` 及 ORM Tenant 声明，并同步三库新安装 Schema、索引、MySQL 字段注释、注册/认证/连接观察/恢复/转配写入条件。历史凭据和注册绑定按领域语义保留，设备只使用简单 `device_id` 外键；使用关系和注册资格继续使用 `(tenant_id, ownership_id)`、`(tenant_id, enrollment_id)` 复合外键。连接观察是当前投影，转配事务在新使用关系建立后同步 Tenant 和 ownership，避免即时外键检查阻塞历史记录转配。
+
+- `vendor/bin/phpunit tests/Unit/ProjectStructureTest.php tests/Unit/ModelFirstBoundaryTest.php`：14 tests、640 assertions 通过。
+- `php tests/check.php`：PHP 语法/命令参数、分发入口、文档站边界检查通过，共检查 965 个文件。
+- `php tests/docs-consistency.php`：核对 1,509 处引用、131 条路由、293 个命令和 247 个 Composer 脚本通过。
+- `git diff --check`：通过；`bin/typeapp-prepare --json`：通过；公共 ORM 迁移计划按版本排序，SQLite `PRAGMA foreign_keys=ON` 逐条执行 14 个 Migration、123 条语句通过，Center 由 `040_center_core` 独立迁移提供。
+- 当前系统 PHP 8.5.12 未加载原生 Swoole，直接运行 `php tests/tenant.php sqlite` 按预期被启动前置条件拒绝（`协程 I/O 需要原生 Swoole`），不计为业务安装失败；需使用锁定 Swoole runtime profile 或重新构建 AOT 后补跑 SQLite、MySQL、PostgreSQL 转配闭环。
+
+当前证据仍不覆盖 Windows/Linux 正式 profile、真实 MySQL/PostgreSQL 转配与设备 MQTT 生产链路；前端 Vben 页面精修沿用既有提交和浏览器证据，本轮未修改前端源码。

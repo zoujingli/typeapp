@@ -6,7 +6,9 @@ namespace TypeApp\Migrations;
 
 use Type\Orm\Migration\Migration;
 
-/** 示例迁移定义随应用一起编译，不在生产扫描或解释 PHP 文件。 */
+/**
+ * 示例迁移定义随应用一起编译，不在生产扫描或解释 PHP 文件。
+ */
 final class Plan
 {
     /**
@@ -21,6 +23,13 @@ final class Plan
         }
 
         $scenario = getenv('TYPE_MIGRATION_SCENARIO') ?: 'normal';
+        if ($scenario === 'rollback') {
+            return [new Migration('202609080003', '可逆迁移示例', [
+                'CREATE TABLE ' . $prefix . '_rollback (id INTEGER PRIMARY KEY, label VARCHAR(100) NOT NULL)',
+            ], $driver !== 'mysql', [
+                'DROP TABLE ' . $prefix . '_rollback',
+            ])];
+        }
         if (in_array($scenario, ['unsafe-defer', 'unsafe-foreign-keys'], true)) {
             return [new Migration('202609080001', '拒绝越界外键开关', [
                 $scenario === 'unsafe-defer' ? 'PRAGMA defer_foreign_keys = ON' : 'PRAGMA foreign_keys = OFF',

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace app\platform\model;
 
-use Type\Orm\Attribute\BelongsTo;
 use Type\Orm\Model;
 
 /**
@@ -16,17 +15,25 @@ use Type\Orm\Model;
  * @property int $expires_at 有效截止时间，UTC Unix 秒。
  * @property int $created_at 创建时间，UTC Unix 秒。
  * @method static \Type\Orm\ModelQuery<static> query(string $alias = '')
+ * @method static \Type\Orm\ModelQuery<static> where(string|array $field, mixed $operator = null, mixed $value = null, string $boolean = 'AND')
+ * @method static \Type\Orm\ModelQuery<static> order(string $field, string $direction = 'ASC')
+ * @method static \Type\Orm\ModelQuery<static> limit(int $count, int $offset = 0)
+ * @method static \Type\Orm\ModelQuery<static> with(string $name, ?\Closure $relation = null)
  * @method static static|null find(int|string $id)
  * @method static static create(array $values)
  * @method static static firstOrCreate(array $identity, array $values = [])
+ * @method static bool destroy(int|string $id)
+ * @method static \Type\Orm\Helper\QueryHelper search(array $input = [], string $alias = '')
  */
 final class PlatformSession extends Model
 {
-    /** 显式加载的所属账号。
-     * @var list<PlatformUser>
+    /**
+     * 显式加载的所属账号。
      */
-    #[BelongsTo(PlatformUser::class, foreignKey: 'user_id')]
-    public ?PlatformUser $user;
+    public function user(): array
+    {
+        return $this->belongsTo(PlatformUser::class, 'user_id');
+    }
 
     protected string $table = 'platform_session';
 

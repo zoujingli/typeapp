@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Type\Validate;
 
-/** 不可变字段声明：先显式转换，再按登记顺序校验。 */
+/**
+ * 不可变字段声明：先显式转换，再按登记顺序校验。
+ */
 final class Field
 {
     private string $type;
@@ -27,6 +29,9 @@ final class Field
 
     private array $rules = [];
 
+    /** @var array<string, string> 稳定错误码到开发者编写的说明。 */
+    private array $explanations = [];
+
     private array $scenarios = [];
 
     private ?\Closure $condition = null;
@@ -42,37 +47,47 @@ final class Field
      */
     public function __construct(string $type)
     {
-        if (!in_array($type, ['string', 'integer', 'number', 'boolean', 'object', 'list'], true)) {
+        if (!in_array($type, ['string', 'integer', 'number', 'boolean', 'object', 'list', 'array'], true)) {
             throw new \InvalidArgumentException('不支持的字段类型：' . $type);
         }
         $this->type = $type;
     }
 
-    /** 接受有效UTF-8文本；默认不trim或隐式转换其他类型。 */
+    /**
+     * 接受有效UTF-8文本；默认不trim或隐式转换其他类型。
+     */
     public static function text(): Field
     {
         return new Field('string');
     }
 
-    /** 接受PHP整数；文本需要显式cast，溢出仍为类型错误。 */
+    /**
+     * 接受PHP整数；文本需要显式cast，溢出仍为类型错误。
+     */
     public static function integer(): Field
     {
         return new Field('integer');
     }
 
-    /** 接受整数或有限浮点数，拒绝INF和NAN。 */
+    /**
+     * 接受整数或有限浮点数，拒绝INF和NAN。
+     */
     public static function number(): Field
     {
         return new Field('number');
     }
 
-    /** 接受真正的布尔值；不将任意非空文本视为true。 */
+    /**
+     * 接受真正的布尔值；不将任意非空文本视为true。
+     */
     public static function boolean(): Field
     {
         return new Field('boolean');
     }
 
-    /** 嵌套stdClass或关联数组按给定Schema校验，结果转为字段数组。 */
+    /**
+     * 嵌套stdClass或关联数组按给定Schema校验，结果转为字段数组。
+     */
     public static function object(Schema $schema): Field
     {
         $field = new Field('object');
@@ -80,7 +95,17 @@ final class Field
         return $field;
     }
 
-    /** 接受连续索引列表；PATCH中提供的列表整体替换，元素仍完整校验。 */
+    /**
+     * 接受列表或关联数组，不要求下标连续，也不校验每个元素。
+     */
+    public static function anyArray(): Field
+    {
+        return new Field('array');
+    }
+
+    /**
+     * 接受连续索引列表；PATCH中提供的列表整体替换，元素仍完整校验。
+     */
     public static function listOf(Field $item): Field
     {
         $field = new Field('list');
@@ -107,25 +132,33 @@ final class Field
         return $copy;
     }
 
-    /** 返回body/query/route/header之一，供Schema选择唯一来源。 */
+    /**
+     * 返回body/query/route/header之一，供Schema选择唯一来源。
+     */
     public function sourceName(): string
     {
         return $this->source;
     }
 
-    /** 返回声明的基础类型，供输入适配保留列表与标量的来源语义。 */
+    /**
+     * 返回声明的基础类型，供输入适配保留列表与标量的来源语义。
+     */
     public function typeName(): string
     {
         return $this->type;
     }
 
-    /** 优先使用显式输入别名；未声明别名时使用Schema字段名。 */
+    /**
+     * 优先使用显式输入别名；未声明别名时使用Schema字段名。
+     */
     public function inputKey(string $fallback): string
     {
         return $this->key ?? $fallback;
     }
 
-    /** 非PATCH时必须实际提供字段；默认值不能代替必填，空串不等于缺失。 */
+    /**
+     * 非PATCH时必须实际提供字段；默认值不能代替必填，空串不等于缺失。
+     */
     public function required(): Field
     {
         $copy = clone $this;
@@ -151,7 +184,9 @@ final class Field
         return $copy;
     }
 
-    /** 允许显式或默认null；null通过后不执行类型、嵌套及后续规则。 */
+    /**
+     * 允许显式或默认null；null通过后不执行类型、嵌套及后续规则。
+     */
     public function nullable(): Field
     {
         $copy = clone $this;
@@ -159,7 +194,9 @@ final class Field
         return $copy;
     }
 
-    /** 显式转换规范整数/JSON数值及true/false/1/0文本；转换失败保留原值供类型拒绝。 */
+    /**
+     * 显式转换规范整数/JSON数值及true/false/1/0文本；转换失败保留原值供类型拒绝。
+     */
     public function cast(): Field
     {
         $copy = clone $this;
@@ -232,8 +269,8 @@ final class Field
      */
     public function length(int $minimum, int $maximum): Field
     {
-        if (!in_array($this->type, ['string', 'list'], true) || $minimum < 0 || $minimum > $maximum) {
-            throw new \InvalidArgumentException('长度声明无效');
+        if (!in_array($this->type, ['string', 'list', 'array'], true) || $minimum < 0 || $minimum > $maximum) {
+            throw new \InvalidArgumentException('文本、列表或数组的长度声明无效');
         }
         return $this->rule('length', static function (mixed $value, Input $input, string $scenario) use ($minimum, $maximum): bool {
             if (is_array($value)) {
@@ -280,6 +317,76 @@ final class Field
      *
      * @throws \InvalidArgumentException 字段非文本
      */
+    /**
+     * 校验完整日历日期或时间，拒绝 2 月 31 日这类溢出。
+     *
+     * @throws \InvalidArgumentException 字段不是文本，或格式不在允许范围内
+     */
+    public function date(string $format = 'Y-m-d'): Field
+    {
+        if ($this->type !== 'string') {
+            throw new \InvalidArgumentException('只有文本字段可以校验日期');
+        }
+        if (!in_array($format, ['Y-m-d', 'Y-m-d H:i:s', 'H:i:s'], true)) {
+            throw new \InvalidArgumentException('日期格式只接受 Y-m-d、Y-m-d H:i:s 或 H:i:s');
+        }
+        return $this->rule('date', static function (mixed $value) use ($format): bool {
+            if (!is_string($value) || strlen($value) > 32) {
+                return false;
+            }
+            $parsed = \DateTimeImmutable::createFromFormat('!' . $format, $value);
+            if ($parsed === false) {
+                return false;
+            }
+            $errors = \DateTimeImmutable::getLastErrors();
+            if (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {
+                return false;
+            }
+            return $parsed->format($format) === $value;
+        });
+    }
+
+    /**
+     * 要求当前值与同一来源中的确认字段一致。
+     *
+     * @throws \InvalidArgumentException 确认字段名无效
+     */
+    public function confirmed(string $key): Field
+    {
+        if ($key === '' || preg_match('/[\x00-\x1f\x7f]/', $key) === 1) {
+            throw new \InvalidArgumentException('确认字段名无效');
+        }
+        $source = $this->source;
+        return $this->rule('confirmed', static function (mixed $value, Input $input) use ($source, $key): bool {
+            $values = $input->source($source);
+            return array_key_exists($key, $values) && $values[$key] === $value;
+        });
+    }
+
+    /**
+     * 只接受 http 或 https 网址，拒绝其它协议和无法解析的文本。
+     *
+     * @throws \InvalidArgumentException 字段不是文本
+     */
+    public function url(): Field
+    {
+        if ($this->type !== 'string') {
+            throw new \InvalidArgumentException('只有文本字段可以校验网址');
+        }
+        return $this->rule('url', static function (mixed $value): bool {
+            if (!is_string($value) || strlen($value) > 2048 || filter_var($value, FILTER_VALIDATE_URL) === false) {
+                return false;
+            }
+            $scheme = parse_url($value, PHP_URL_SCHEME);
+            return is_string($scheme) && in_array(strtolower($scheme), ['http', 'https'], true);
+        });
+    }
+
+    /**
+     * 只检查邮件格式，不查询域名或发信。
+     *
+     * @throws \InvalidArgumentException 字段不是文本
+     */
     public function email(): Field
     {
         if ($this->type !== 'string') {
@@ -294,6 +401,25 @@ final class Field
      * @param \Closure(mixed, Input, string): bool $predicate 依次接收已转换字段值、原始分源输入和场景
      * @throws \InvalidArgumentException 错误码不是小写字母开头的小写字母/数字/下划线标识
      */
+    /**
+     * 给稳定错误码附上给人看的说明。说明来自规则声明，不回显输入值。
+     */
+    public function explain(string $code, string $message): Field
+    {
+        if ($message === '' || preg_match('/^[a-z][a-z0-9_]*$/D', $code) !== 1) {
+            throw new \InvalidArgumentException('校验说明无效');
+        }
+        $copy = clone $this;
+        $copy->explanations[$code] = $message;
+        for ($index = count($copy->rules) - 1; $index >= 0; $index--) {
+            if ($copy->rules[$index]['code'] === $code) {
+                $copy->rules[$index]['message'] = $message;
+                break;
+            }
+        }
+        return $copy;
+    }
+
     public function rule(string $code, \Closure $predicate): Field
     {
         if (!preg_match('/^[a-z][a-z0-9_]*$/D', $code)) {
@@ -310,22 +436,22 @@ final class Field
      * @internal
      * @param bool $provided 原始输入是否实际含有该字段，不能用isset混淆null
      * @param string $path 完整字段路径，嵌套错误在其后追加字段或列表下标
-     * @return array{provided: bool, value: mixed, errors: array<string, list<string>>} provided表示有效输入或已应用默认值；errors非空时value不能作为已校验数据
+     * @return array{provided: bool, value: mixed, errors: array<string, list<string>>, messages: array<string, list<string>>} provided表示有效输入或已应用默认值；errors非空时value不能作为已校验数据
      */
     public function validate(mixed $value, bool $provided, Input $input, string $scenario, bool $patch, string $path): array
     {
         if (($this->scenarios !== [] && !in_array($scenario, $this->scenarios, true))
             || ($this->condition !== null && !($this->condition)($input, $scenario))) {
-            return ['provided' => false, 'value' => null, 'errors' => []];
+            return ['provided' => false, 'value' => null, 'errors' => [], 'messages' => []];
         }
         if (!$provided) {
             if ($patch || $this->required || !$this->hasDefault) {
-                return ['provided' => false, 'value' => null, 'errors' => $this->required && !$patch ? [$path => ['required']] : []];
+                return ['provided' => false, 'value' => null, 'errors' => $this->required && !$patch ? [$path => ['required']] : [], 'messages' => $this->required && !$patch ? [$path => [$this->explanations['required'] ?? '']] : []];
             }
             $value = self::copyDefault($this->defaultValue, 0);
         }
         if ($value === null) {
-            return ['provided' => true, 'value' => null, 'errors' => $this->nullable ? [] : [$path => ['null_not_allowed']]];
+            return ['provided' => true, 'value' => null, 'errors' => $this->nullable ? [] : [$path => ['null_not_allowed']], 'messages' => $this->nullable ? [] : [$path => [$this->explanations['null_not_allowed'] ?? '']]];
         }
         if ($this->trim && is_string($value)) {
             $value = trim($value);
@@ -340,14 +466,18 @@ final class Field
             'boolean' => is_bool($value),
             'object' => $value instanceof \stdClass || (is_array($value) && !array_is_list($value)),
             'list' => is_array($value) && array_is_list($value),
+            'array' => is_array($value),
         };
         if (!$valid) {
-            return ['provided' => true, 'value' => null, 'errors' => [$path => ['type_' . $this->type]]];
+            $code = 'type_' . $this->type;
+            return ['provided' => true, 'value' => null, 'errors' => [$path => [$code]], 'messages' => [$path => [$this->explanations[$code] ?? '']]];
         }
         $errors = [];
+        $messages = [];
         foreach ($this->rules as $rule) {
             if (($rule['predicate'])($value, $input, $scenario) !== true) {
                 $errors[$path][] = $rule['code'];
+                $messages[$path][] = $rule['message'] ?? ($this->explanations[$rule['code']] ?? '');
             }
         }
         if ($this->schema !== null) {
@@ -357,6 +487,9 @@ final class Field
                 foreach ($error->errors() as $nested => $codes) {
                     $errors[$path . '.' . $nested] = $codes;
                 }
+                foreach ($error->messages() as $nested => $texts) {
+                    $messages[$path . '.' . $nested] = $texts;
+                }
             }
         } elseif ($this->item !== null) {
             $items = [];
@@ -364,14 +497,17 @@ final class Field
                 // PATCH 中提供的数组替换整个数组，其新元素仍须完整。
                 $result = $this->item->validate($entry, true, $input, $scenario, false, $path . '.' . $index);
                 $errors = array_merge($errors, $result['errors']);
+                $messages = array_merge($messages, $result['messages']);
                 $items[] = $result['value'];
             }
             $value = $items;
         }
-        return ['provided' => true, 'value' => $value, 'errors' => $errors];
+        return ['provided' => true, 'value' => $value, 'errors' => $errors, 'messages' => $messages];
     }
 
-    /** 复制值而不是保留数组引用或共享对象；有界递归同时拒绝循环数据。 */
+    /**
+     * 复制值而不是保留数组引用或共享对象；有界递归同时拒绝循环数据。
+     */
     private static function copyDefault(mixed $value, int $depth): mixed
     {
         if ($value === null || is_scalar($value)) {

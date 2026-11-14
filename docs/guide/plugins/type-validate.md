@@ -2,7 +2,28 @@
 
 [返回组件总览](../components.md)
 
-以不可变 Field 和 Schema 校验明确来源的输入，返回 Data 或不携带原始值的 ValidationException。适合 HTTP JSON、查询参数以及应用 DTO，不依赖 HTTP 核心或数据库。
+控制器和命令通过 `_vali` 同时接收输入并校验。规则写成 `字段.规则`，值是给人看的说明；`default` 提供缺省值，`value` 写入固定值，`字段#别名` 从另一个输入名取值。`_version()` 展开乐观锁版本的必填、整数和闭区间，默认从 1 到 2147483646。返回数组只包含已声明字段。失败仍是 422：`fields` 是稳定错误码，规则里写了说明时 `messages` 带上同一路径的说明，不回显输入值。
+
+```php
+$data = _vali([
+    'name.required' => '名称不能为空',
+    'name.length:1,100' => '名称长度不正确',
+    'page.default' => 1,
+    'page.integer' => '页码不正确',
+], 'query');
+```
+
+省略来源或传入 `all`、`query`、`body` 时，从当前执行作用域读取本次 HTTP 请求。传入数组时只校验这份数组。`Field` 与 `Schema` 留在组件内部执行规则，应用代码不组装它们。
+
+列表筛选在 Service 中使用 `_query`，字段可用逗号分隔，`列名#输入名` 表示别名。
+
+```php
+$page = _query(Product::where('enabled', true), $input)
+    ->like('name')
+    ->equal('status')
+    ->page();
+```
+
 
 ## 从原始输入到业务字段
 
@@ -16,7 +37,7 @@ flowchart TB
   D -->|全部通过| E[Data 有效字段]
   E --> F[DTO / 业务服务]
   B -->|格式或容量错误| G[400 / 413]
-  D -->|字段不通过| H[422 字段路径与错误码]
+  D -->|字段不通过| H[422 字段错误码与说明]
 ```
 
 建议先运行下方最小示例，确认字段来源与类型，再练习 PATCH，最后接入 HTTP 控制器。纯校验不需要创建协程；自定义规则涉及 I/O 时，连接与执行预算仍由调用方作用域管理。
@@ -160,16 +181,13 @@ $slug = Field::text()->required()->rule(
 try {
     $data = $schema->validate($input);
 } catch (\Type\Validate\ValidationException $error) {
-    $response = [
-        'code' => $error->errorCode(),
-        'fields' => $error->errors(),
-    ];
+    $response = $error->body();
     $status = $error->status();
     // HTTP 适配层使用 $status 和 $response 构造响应。
 }
 ```
 
-解析非法输入为 400、体积超限为 413、字段规则失败为 422。errors 是字段路径到稳定错误码列表，不含原始值；不要自行把完整请求、密码或令牌附到响应。
+解析非法输入为 400、体积超限为 413、字段规则失败为 422。`errors()` 是字段路径到稳定错误码列表。`body()` 在此基础上保留 `fields`，并在规则声明了说明时加入 `messages`。说明来自源码中的规则文本，不含请求原文、密码或令牌。物联中心的 `ApiErrors` 直接返回 `body()`。`type-core` 的 HTTP 服务器不识别 `ValidationException`，未安装该中间件时协程外抛出的校验失败不会自动变成字段响应。
 
 ## 常见问题与编译
 

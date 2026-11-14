@@ -1,12 +1,18 @@
-# PHP 类型属性模型与 CRUD
+# PHP 模型与 CRUD
 
-模型复用 type-orm 的模型查询和不可变 `Query`，运行时不依赖 core；HTTP 示例由应用组合 core、校验器和 ORM。`Connection` 只属于迁移、驱动验收及其他受限基础设施入口，不作为业务 Model 的参数。
+模型用 `protected $table`、`$schema` 和生命周期属性声明，关系写成 `hasOne`、`hasMany`、`belongsTo`、`belongsToMany` 方法。构建期读取这些字面量，不使用 `Table` 或 `Column` 注解。运行时不依赖 core；HTTP 示例由应用组合 core、校验器和 ORM。
+
+日常查询从模型开始：`User::where('name', 'think')` 表示等于，`User::where('id', '>', 1)` 表示比较，`User::order('id', 'desc')`、`User::with('roles')` 返回 `ModelQuery`。取列表使用 `get()`。`select(['id', 'name'])` 只选择字段。写入使用 `create()`、属性赋值、`save()`、`where()->update()`、`delete()` 和 `destroy($id)`。未预加载的关系属性不会查询数据库。
+
+`Connection` 只属于迁移、驱动验收及其他受限基础设施入口，不作为业务 Model 的参数。
 
 普通模型操作不传连接：框架按当前 Swoole 执行作用域自动借还，普通查询默认读从、写入使用主库，通过 `master()` 明确主读；具有指定租户字段的模型由可信上下文约束归属。启动装配、静态 `create/find/search()`、事务与上下文边界见[Model 自动连接与主从路由](model-connections.md)。API、PHP 行为、AOT 和完整平台验收分别记录。
 
 ## 声明与生成
 
-模型直接继承 `Type\Orm\Model`，CLI 与 HTTP 示例共用 `examples/model/Models.php`。`Table` Attribute 声明表、主键及生命周期字段；PHP 属性声明字段名、类型和可空性，`Column` 补充列名、精确数值类型、赋值权限及输出可见性。完整示例与迁移步骤见[模型指南](../guide/plugins/type-orm.md#models-relations-output)。
+模型直接继承 `Type\Orm\Model`。表和字段写在 `protected $table` 与 `protected $schema`，关系用方法返回 `hasOne`、`hasMany`、`belongsTo` 或 `belongsToMany`。类注释里的 `@property` 来自字段说明，`@method` 列出 `where`、`order`、`with`、`find`、`create`、`destroy` 等构建期生成的静态入口，便于 IDE 补全。下面的属性示例仍然说明生成后的读写语义。
+
+已有迁移可以在不连接数据库的情况下生成模型：对 `SchemaMigration::up()` 使用记录中的 `Schema`，用 `ModelStructure::fromBlueprint()` 取出表、列和注释，再交给 `MigrationModelGenerator`。它只为尚未声明的单主键表写新文件，保留已有模型上的租户、版本和业务方法。MySQL 上的 `model:sync` 仍负责按真实库校对并更新这些声明。
 
 PHP 属性名不能遮蔽 `Model` 基类成员，包括私有成员；完整生产源码构建会检查此冲突。例如数据库列 `state` 应声明为 `#[Column(name: 'state')] public string $status;`，业务通过 `status` 和 `getStatus()` 使用它。映射只改变 PHP 名称，不改数据库列、Schema 快照或历史迁移。
 

@@ -20,10 +20,14 @@ use Type\Orm\Db;
 use Type\Orm\Model;
 use Type\Orm\ModelQuery;
 
-/** 人员账号与可撤销登录会话；角色按每次请求读取，不在令牌中缓存租户授权。 */
+/**
+ * 人员账号与可撤销登录会话；角色按每次请求读取，不在令牌中缓存租户授权。
+ */
 final class IdentityService
 {
-    /** 启动时选择独立账号域；网络输入不能选择表或获得另一个域的角色。 */
+    /**
+     * 启动时选择独立账号域；网络输入不能选择表或获得另一个域的角色。
+     */
     public function __construct(private string $realm = 'system')
     {
         if (!in_array($realm, ['platform', 'system'], true)) {
@@ -62,7 +66,9 @@ final class IdentityService
         });
     }
 
-    /** 初始化在建表前同样校验输入；只接受 bcrypt 不截断的显式口令。 */
+    /**
+     * 初始化在建表前同样校验输入；只接受 bcrypt 不截断的显式口令。
+     */
     public static function validateAccount(string $login, string $name, string $password): void
     {
         if (!preg_match('/^[a-z0-9][a-z0-9_.@-]{2,99}$/D', $login) || trim($name) === '' || strlen($name) > 100
@@ -238,7 +244,7 @@ final class IdentityService
             if ($this->realm === 'system') {
                 $sessionQuery = $sessionQuery->whereNull('source_session_id');
             }
-            $sessions = $sessionQuery->orderBy('created_at')->orderBy('token_hash')->limit(10)->get();
+            $sessions = $sessionQuery->order('created_at')->order('token_hash')->limit(10)->get();
             foreach ($sessions as $index => $session) {
                 if ((int)$session->expires_at <= $now || (count($sessions) >= 10 && $index === 0)) {
                     $session->delete();
@@ -305,7 +311,9 @@ final class IdentityService
         return $current !== null && self::context($current, $context['tenant_id'])['key'] === $context['key'] ? $current : null;
     }
 
-    /** 交接码消费事务内创建模拟会话；来源及目标资格由消费方和每次认证重复核对。 */
+    /**
+     * 交接码消费事务内创建模拟会话；来源及目标资格由消费方和每次认证重复核对。
+     */
     public function impersonate(Identity $identity, string $tenantId, string $userId): array
     {
         $connection = Db::connection('default', true);
@@ -317,7 +325,7 @@ final class IdentityService
             throw new HttpError(403, 'impersonation_target_invalid');
         }
         $now = time();
-        $sessions = SystemSession::query()->master()->where('source_session_id', '=', $origin['session_id'])->orderBy('created_at')->orderBy('id')->limit(10)->get();
+        $sessions = SystemSession::query()->master()->where('source_session_id', '=', $origin['session_id'])->order('created_at')->order('id')->limit(10)->get();
         foreach ($sessions as $index => $session) {
             if ((int)$session->expires_at <= $now || (count($sessions) >= 10 && $index === 0)) {
                 $session->delete();
@@ -353,7 +361,9 @@ final class IdentityService
         ], JSON_THROW_ON_ERROR))];
     }
 
-    /** @return array<string, mixed> 当前有效账号的公开字段。 */
+    /**
+     * @return array<string, mixed> 当前有效账号的公开字段。
+     */
     public function user(string $id): array
     {
         $user = $this->userQuery()->where('id', '=', $id)->where('enabled', '=', true)->where('recovery_verified', '=', true)->first();
@@ -392,7 +402,9 @@ final class IdentityService
         }, 'default', $connection->driverName() === 'sqlite' ? 'immediate' : 'default');
     }
 
-    /** 固定的散列或会话标识查询共享同一认证事实及来源检查。 */
+    /**
+     * 固定的散列或会话标识查询共享同一认证事实及来源检查。
+     */
     private function sessionIdentity(string $column, string $value): ?Identity
     {
         $connection = Db::connection('default', true);
@@ -430,7 +442,9 @@ final class IdentityService
         return new Identity((string)$user->id, ['realm:' . $this->realm], $attributes);
     }
 
-    /** 当前账号域只映射到一个稳定领域 Model，不再通过运行时表名切换业务实体。 */
+    /**
+     * 当前账号域只映射到一个稳定领域 Model，不再通过运行时表名切换业务实体。
+     */
     private function userQuery(): ModelQuery
     {
         return match ($this->realm) {
@@ -439,7 +453,9 @@ final class IdentityService
         };
     }
 
-    /** 新账号统一经过具体 Model 的字段赋值和版本契约。 */
+    /**
+     * 新账号统一经过具体 Model 的字段赋值和版本契约。
+     */
     private function newUser(array $values): Model
     {
         return match ($this->realm) {
@@ -448,7 +464,9 @@ final class IdentityService
         };
     }
 
-    /** 会话固定映射到所属身份域，两个域都以 token_hash 为内部主键。 */
+    /**
+     * 会话固定映射到所属身份域，两个域都以 token_hash 为内部主键。
+     */
     private function sessionQuery(): ModelQuery
     {
         return match ($this->realm) {
@@ -465,7 +483,9 @@ final class IdentityService
         };
     }
 
-    /** 会话撤销逐模型执行，保留删除事件、事务登记和跨驱动一致性。 */
+    /**
+     * 会话撤销逐模型执行，保留删除事件、事务登记和跨驱动一致性。
+     */
     private function deleteSessions(string $userId): void
     {
         foreach ($this->sessionQuery()->where('user_id', '=', $userId)->get() as $session) {
@@ -473,7 +493,9 @@ final class IdentityService
         }
     }
 
-    /** 凭据与会话散列始终排除在审计之外。 */
+    /**
+     * 凭据与会话散列始终排除在审计之外。
+     */
     private function audit(Connection $connection, Identity|string $actorId, string $action, string $subjectId, string $result, string $role, string $requestId, string $actorRealm = ''): void
     {
         AuditLog::append(
@@ -488,7 +510,9 @@ final class IdentityService
         );
     }
 
-    /** 身份模型的公开投影；口令、锁定计数及会话字段不进入响应。 */
+    /**
+     * 身份模型的公开投影；口令、锁定计数及会话字段不进入响应。
+     */
     private function present(Model $user): array
     {
         return ['id' => (string)$user->id, 'login' => (string)$user->login, 'name' => (string)$user->name,

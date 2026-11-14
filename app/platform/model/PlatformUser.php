@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace app\platform\model;
 
-use Type\Orm\Attribute\BelongsToMany;
-use Type\Orm\Attribute\HasMany;
 use Type\Orm\Model;
 
 /**
@@ -22,23 +20,33 @@ use Type\Orm\Model;
  * @property bool $recovery_verified 当前授权事实是否已完成恢复核对。
  * @property-read int $created_at 创建时间，UTC Unix 秒。
  * @method static \Type\Orm\ModelQuery<static> query(string $alias = '')
+ * @method static \Type\Orm\ModelQuery<static> where(string|array $field, mixed $operator = null, mixed $value = null, string $boolean = 'AND')
+ * @method static \Type\Orm\ModelQuery<static> order(string $field, string $direction = 'ASC')
+ * @method static \Type\Orm\ModelQuery<static> limit(int $count, int $offset = 0)
+ * @method static \Type\Orm\ModelQuery<static> with(string $name, ?\Closure $relation = null)
  * @method static static|null find(int|string $id)
  * @method static static create(array $values)
  * @method static static firstOrCreate(array $identity, array $values = [])
+ * @method static bool destroy(int|string $id)
+ * @method static \Type\Orm\Helper\QueryHelper search(array $input = [], string $alias = '')
  */
 final class PlatformUser extends Model
 {
     /** 账号关联的会话；访问前须显式加载。
-     * @var list<PlatformSession>
+     * @return list<PlatformSession>
      */
-    #[HasMany(PlatformSession::class, foreignKey: 'user_id')]
-    public array $sessions;
+    public function sessions(): array
+    {
+        return $this->hasMany(PlatformSession::class, 'user_id');
+    }
 
     /** 账号关联的角色；访问前须显式加载。
-     * @var list<PlatformRole>
+     * @return list<PlatformRole>
      */
-    #[BelongsToMany(PlatformRole::class, 'platform_user_role', 'user_id', 'role_id')]
-    public array $roles;
+    public function roles(): array
+    {
+        return $this->belongsToMany(PlatformRole::class, 'platform_user_role', 'user_id', 'role_id');
+    }
 
     protected string $table = 'platform_user';
 

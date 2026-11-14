@@ -81,7 +81,7 @@ function main(int $argc, array $argv): void
                 $b->relation('tags')->attach(100, ['position' => 9]);
                 $b->relation('tags')->attach(102, ['position' => 4]);
                 $before = $connection->statistics()['read_attempts'];
-                $posts = Article::query()->select(['title'])->with('tags', $tags)->orderBy('id')->get();
+                $posts = Article::query()->select(['title'])->with('tags', $tags)->order('id')->get();
                 pivotExpect($connection->statistics()['read_attempts'] - $before === 4, '多对多预加载出现逐记录查询');
                 pivotExpect(array_slice($connection->statistics()['recent_read_parameter_sizes'], -4) === [0, 2, 2, 1], '中间表或目标查询批量不符');
                 pivotExpect($posts[0]->related('tags')[0]->pivot() === ['position' => 2]

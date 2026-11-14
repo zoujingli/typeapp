@@ -77,7 +77,7 @@ function main(int $argc, array $argv): void
                 }
                 relationExpect($rejected, '原查询被预加载修改或未加载关系未拒绝');
                 $owner = Relation::belongsTo(static fn (Connection $connection): ModelQuery => User::query()->onConnection($connection)->select(['name']), 'user_id', 'id', 2);
-                $posts = Article::query()->select(['title'])->with('owner', $owner)->orderBy('id')->get();
+                $posts = Article::query()->select(['title'])->with('owner', $owner)->order('id')->get();
                 relationExpect($posts[0]->related('owner')->getName() === '甲' && $posts[3]->related('owner') === null, 'belongsTo 或空外键语义错误');
                 $connection->table('type_model_articles')->where('id', '=', 11)->update(['user_id' => 2]);
                 $changed = $base->with('articles', $articles)->orderBy('id')->get();

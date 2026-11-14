@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
-/** 受管连接上的不可变表查询，组合 SQL 与绑定参数，不隐式继承模型生命周期语义。 */
+/**
+ * 受管连接上的不可变表查询，组合 SQL 与绑定参数，不隐式继承模型生命周期语义。
+ */
 final class Query
 {
     private Connection $connection;
@@ -57,7 +59,9 @@ final class Query
 
     private array $uniqueOrder = [];
 
-    /** 绑定已借出的连接并验证表名/别名；不接受原始 SQL 表达式作为标识符。 */
+    /**
+     * 绑定已借出的连接并验证表名/别名；不接受原始 SQL 表达式作为标识符。
+     */
     public function __construct(Connection $connection, string $table, string $alias = '')
     {
         $this->connection = $connection;
@@ -70,7 +74,9 @@ final class Query
         $this->having = new Conditions($this->dialect, $connection);
     }
 
-    /** 将完整子查询作为派生表；外层只能使用声明的别名和输出列。 */
+    /**
+     * 将完整子查询作为派生表；外层只能使用声明的别名和输出列。
+     */
     public static function fromSub(Query $query, string $alias): Query
     {
         $statement = $query->compileFor($query->connection);
@@ -81,7 +87,9 @@ final class Query
         return $next;
     }
 
-    /** 比较列，不接受 SQL 表达式。 */
+    /**
+     * 比较列，不接受 SQL 表达式。
+     */
     public function whereColumn(string $left, string $operator, string $right, string $boolean = 'AND'): Query
     {
         $next = clone $this;
@@ -89,7 +97,9 @@ final class Query
         return $next;
     }
 
-    /** EXISTS 在数据库执行，子查询必须来自当前连接。 */
+    /**
+     * EXISTS 在数据库执行，子查询必须来自当前连接。
+     */
     public function whereExists(Query $query, bool $not = false, string $boolean = 'AND'): Query
     {
         $next = clone $this;
@@ -97,13 +107,17 @@ final class Query
         return $next;
     }
 
-    /** 排除存在匹配行的结果。 */
+    /**
+     * 排除存在匹配行的结果。
+     */
     public function whereNotExists(Query $query): Query
     {
         return $this->whereExists($query, true);
     }
 
-    /** 返回增加参数化比较的新查询；调用者仍负责字段授权与业务归属。 */
+    /**
+     * 返回增加参数化比较的新查询；调用者仍负责字段授权与业务归属。
+     */
     public function where(string $column, string $operator, mixed $value, string $boolean = 'AND'): Query
     {
         $next = clone $this;
@@ -112,13 +126,28 @@ final class Query
         return $next;
     }
 
-    /** 以 OR 组合新条件，原查询保持不变。 */
+    /**
+     * 包含式匹配。感叹号是转义符，调用方先把字面量 !、% 和 _ 写入模式。
+     */
+    public function whereLike(string $column, string $pattern, string $boolean = 'AND'): Query
+    {
+        $next = clone $this;
+        $next->conditions = $this->conditions->whereLike($column, $pattern, $boolean);
+
+        return $next;
+    }
+
+    /**
+     * 以 OR 组合新条件，原查询保持不变。
+     */
     public function orWhere(string $column, string $operator, mixed $value): Query
     {
         return $this->where($column, $operator, $value, 'OR');
     }
 
-    /** 筛选 SQL NULL；not=true 表示 IS NOT NULL。 */
+    /**
+     * 筛选 SQL NULL；not=true 表示 IS NOT NULL。
+     */
     public function whereNull(string $column, bool $not = false): Query
     {
         return $this->where($column, $not ? '!=' : '=', null);
@@ -147,7 +176,9 @@ final class Query
         return $this->whereIn($column, $values, true);
     }
 
-    /** @param \Closure(Conditions): Conditions $group 接收独立条件组并返回组合后的条件。 */
+    /**
+     * @param \Closure(Conditions): Conditions $group 接收独立条件组并返回组合后的条件。
+     */
     public function whereGroup(\Closure $group, string $boolean = 'AND'): Query
     {
         $next = clone $this;
@@ -197,7 +228,9 @@ final class Query
         return $next;
     }
 
-    /** 追加 COUNT、SUM、AVG、MIN 或 MAX 投影，并以显式别名读取结果。 */
+    /**
+     * 追加 COUNT、SUM、AVG、MIN 或 MAX 投影，并以显式别名读取结果。
+     */
     public function selectAggregate(string $function, string $column, string $alias): Query
     {
         $next = clone $this;
@@ -210,7 +243,9 @@ final class Query
         return $next;
     }
 
-    /** 追加标量子查询；子查询必须自行保证至多一行、一列。 */
+    /**
+     * 追加标量子查询；子查询必须自行保证至多一行、一列。
+     */
     public function selectSub(Query $query, string $alias): Query
     {
         $statement = $query->compileFor($this->connection);
@@ -220,7 +255,9 @@ final class Query
         return $next;
     }
 
-    /** 对完整投影去重。 */
+    /**
+     * 对完整投影去重。
+     */
     public function distinct(bool $enabled = true): Query
     {
         $next = clone $this;
@@ -228,7 +265,9 @@ final class Query
         return $next;
     }
 
-    /** 合并兼容投影；当前查询的排序与 LIMIT 作用于合并后的结果。 */
+    /**
+     * 合并兼容投影；当前查询的排序与 LIMIT 作用于合并后的结果。
+     */
     public function union(Query $query, bool $all = false): Query
     {
         $next = clone $this;
@@ -236,13 +275,17 @@ final class Query
         return $next;
     }
 
-    /** 合并并保留重复结果行。 */
+    /**
+     * 合并并保留重复结果行。
+     */
     public function unionAll(Query $query): Query
     {
         return $this->union($query, true);
     }
 
-    /** 将子查询输出参与联表；连接条件只接受列标识符。 */
+    /**
+     * 将子查询输出参与联表；连接条件只接受列标识符。
+     */
     public function joinSub(Query $query, string $alias, string $left, string $operator, string $right, string $type = 'INNER'): Query
     {
         $statement = $query->compileFor($this->connection);
@@ -257,7 +300,9 @@ final class Query
         return $next;
     }
 
-    /** 声明复杂结果的唯一排序组合；调用方负责其真实唯一性，分页时补齐遗漏列。 */
+    /**
+     * 声明复杂结果的唯一排序组合；调用方负责其真实唯一性，分页时补齐遗漏列。
+     */
     public function uniqueOrderBy(array $columns): Query
     {
         if ($columns === [] || !array_is_list($columns) || count(array_unique($columns)) !== count($columns)) {
@@ -274,7 +319,9 @@ final class Query
         return $next;
     }
 
-    /** 以列与列比较组合 INNER/LEFT JOIN，不接受值拼接或任意 ON 表达式。 */
+    /**
+     * 以列与列比较组合 INNER/LEFT JOIN，不接受值拼接或任意 ON 表达式。
+     */
     public function join(string $table, string $left, string $operator, string $right, string $alias = '', string $type = 'INNER'): Query
     {
         $type = strtoupper($type);
@@ -313,7 +360,9 @@ final class Query
         return $next;
     }
 
-    /** 在分组结果上加入聚合比较，参数仍通过绑定传递。 */
+    /**
+     * 在分组结果上加入聚合比较，参数仍通过绑定传递。
+     */
     public function havingAggregate(string $function, string $column, string $operator, mixed $value): Query
     {
         $next = clone $this;
@@ -322,7 +371,9 @@ final class Query
         return $next;
     }
 
-    /** 追加排序，方向只接受 ASC/DESC；外部字段名须先经业务白名单。 */
+    /**
+     * 追加排序，方向只接受 ASC/DESC；外部字段名须先经业务白名单。
+     */
     public function orderBy(string $column, string $direction = 'ASC'): Query
     {
         $direction = strtoupper($direction);
@@ -355,7 +406,9 @@ final class Query
         return $next;
     }
 
-    /** 外部输入必须映射到应用明确允许的列；语法有效不等于有权读取。 */
+    /**
+     * 外部输入必须映射到应用明确允许的列；语法有效不等于有权读取。
+     */
     public function orderByAllowed(string $input, array $allowed, string $direction = 'ASC'): Query
     {
         if (!isset($allowed[$input]) || !is_string($allowed[$input])) {
@@ -365,7 +418,9 @@ final class Query
         return $this->orderBy($allowed[$input], $direction);
     }
 
-    /** 声明显式读取条数与零起点偏移，不改变原查询，也不是集合写入分批入口。 */
+    /**
+     * 声明显式读取条数与零起点偏移，不改变原查询，也不是集合写入分批入口。
+     */
     public function limit(int $limit, int $offset = 0): Query
     {
         if ($limit < 1 || $offset < 0) {
@@ -389,7 +444,9 @@ final class Query
         return $this->connection->query($statement[0], $statement[1]);
     }
 
-    /** 声明事务行锁；不支持的驱动拒绝，执行时仍须位于活动事务。 */
+    /**
+     * 声明事务行锁；不支持的驱动拒绝，执行时仍须位于活动事务。
+     */
     public function lockForUpdate(bool $skipLocked = false): Query
     {
         $this->dialect->requireCapability($skipLocked ? 'skip-locked' : 'row-lock');
@@ -413,7 +470,9 @@ final class Query
         return $this->connection->stream($statement[0], $statement[1], $batchSize, $maxRowBytes);
     }
 
-    /** 分别计数和取页；需同一快照时由调用者事务保证，复杂结果须声明唯一排序键。 */
+    /**
+     * 分别计数和取页；需同一快照时由调用者事务保证，复杂结果须声明唯一排序键。
+     */
     public function paginate(int $page = 1, int $perPage = 20, string $primaryKey = 'id'): Page
     {
         $this->pageSize($perPage);
@@ -429,7 +488,9 @@ final class Query
         return new Page($items, $total, $page, $perPage);
     }
 
-    /** 不执行总数查询，多取一行判断下一页。 */
+    /**
+     * 不执行总数查询，多取一行判断下一页。
+     */
     public function simplePaginate(int $page = 1, int $perPage = 20, string $primaryKey = 'id'): SimplePage
     {
         $this->pageSize($perPage);
@@ -444,7 +505,9 @@ final class Query
         return new SimplePage($rows, $page, $perPage, $more);
     }
 
-    /** 按稳定单表排序继续读取，after 必须来自同一查询身份；不支持复杂结果游标。 */
+    /**
+     * 按稳定单表排序继续读取，after 必须来自同一查询身份；不支持复杂结果游标。
+     */
     public function cursorPaginate(int $perPage = 100, ?string $after = null, string $primaryKey = 'id'): CursorPage
     {
         $this->pageSize($perPage);
@@ -489,7 +552,9 @@ final class Query
         return new CursorPage($rows, $more ? CursorToken::encode($shape, $values) : null);
     }
 
-    /** @param \Closure(array): mixed $consumer 接收本批行；可返回 void，仅 false 提前退出。 */
+    /**
+     * @param \Closure(array): mixed $consumer 接收本批行；可返回 void，仅 false 提前退出。
+     */
     public function chunk(int $size, \Closure $consumer, string $primaryKey = 'id'): int
     {
         $cursor = null;
@@ -510,19 +575,25 @@ final class Query
         return $count;
     }
 
-    /** 预览参数化 SQL，不执行目标查询，也不要求预览时已经开启事务。 */
+    /**
+     * 预览参数化 SQL，不执行目标查询，也不要求预览时已经开启事务。
+     */
     public function toSql(): string
     {
         return $this->selectStatement(false)[0];
     }
 
-    /** 返回原始绑定值，仅供调用方显式检查；查询监听使用独立脱敏策略。 */
+    /**
+     * 返回原始绑定值，仅供调用方显式检查；查询监听使用独立脱敏策略。
+     */
     public function bindings(): array
     {
         return $this->selectStatement(false)[1];
     }
 
-    /** @internal 组合子查询时验证连接身份与锁边界。 */
+    /**
+     * @internal 组合子查询时验证连接身份与锁边界。
+     */
     public function compileFor(Connection $connection): array
     {
         if ($connection !== $this->connection || $this->lock !== '') {
@@ -543,13 +614,17 @@ final class Query
         return $rows[0] ?? null;
     }
 
-    /** 不加载全部结果，只检查当前结果集是否非空。 */
+    /**
+     * 不加载全部结果，只检查当前结果集是否非空。
+     */
     public function exists(): bool
     {
         return $this->first() !== null;
     }
 
-    /** 读取单列首值；没有结果返回 null。 */
+    /**
+     * 读取单列首值；没有结果返回 null。
+     */
     public function value(string $column): mixed
     {
         $source = $this->extractionQuery();
@@ -557,7 +632,9 @@ final class Query
         return $row === null ? null : $row['__type_value'];
     }
 
-    /** 读取单列列表；提供键列时拒绝重复键，避免静默丢失结果。 */
+    /**
+     * 读取单列列表；提供键列时拒绝重复键，避免静默丢失结果。
+     */
     public function pluck(string $column, ?string $key = null): array
     {
         $projection = ['__type_value' => $column];
@@ -579,26 +656,34 @@ final class Query
         return $values;
     }
 
-    /** 空结果使用稳定模型错误码报告。 */
+    /**
+     * 空结果使用稳定模型错误码报告。
+     */
     public function firstOrFail(): array
     {
         return $this->first() ?? throw new ModelException('not_found', '查询结果不存在');
     }
 
-    /** 按显式主键列获取一行，空结果抛出异常。 */
+    /**
+     * 按显式主键列获取一行，空结果抛出异常。
+     */
     public function findOrFail(mixed $id, string $primaryKey = 'id'): array
     {
         return $this->where($primaryKey, '=', $id)->firstOrFail();
     }
 
-    /** 执行单值聚合并保留数据库返回类型；分组或分页查询需另建聚合查询。 */
+    /**
+     * 执行单值聚合并保留数据库返回类型；分组或分页查询需另建聚合查询。
+     */
     public function aggregate(string $function, string $column = '*'): mixed
     {
         $rows = $this->aggregateQuery($function, $column)->get();
         return $rows[0]['value'];
     }
 
-    /** 生成单值聚合查询以供组合；不会提前执行子查询。 */
+    /**
+     * 生成单值聚合查询以供组合；不会提前执行子查询。
+     */
     public function aggregateQuery(string $function, string $column = '*'): Query
     {
         if ($this->groups !== [] || $this->having->sql() !== '' || $this->limit !== 0 || $this->lock !== '' || $this->distinct || $this->unions !== []) {
@@ -613,7 +698,9 @@ final class Query
         return $next;
     }
 
-    /** 显式允许无约束更新或删除；仅对返回的新查询生效。 */
+    /**
+     * 显式允许无约束更新或删除；仅对返回的新查询生效。
+     */
     public function allowAll(): Query
     {
         $next = clone $this;
@@ -642,7 +729,9 @@ final class Query
         return $this->insertMany([$row]);
     }
 
-    /** 单条 INSERT，不隐式分批；原子性由实际表的事务能力保证。 */
+    /**
+     * 单条 INSERT，不隐式分批；原子性由实际表的事务能力保证。
+     */
     public function insertMany(array $rows): int
     {
         $this->writeShape(false);
@@ -683,7 +772,9 @@ final class Query
         return $this->connection->query($statement[0] . ' RETURNING ' . implode(', ', $returning), $statement[1]);
     }
 
-    /** PostgreSQL / SQLite 的冲突目标必须对应数据库中的非部分唯一约束。 */
+    /**
+     * PostgreSQL / SQLite 的冲突目标必须对应数据库中的非部分唯一约束。
+     */
     public function upsert(array $rows, array $uniqueBy, array $updateColumns): int
     {
         $this->dialect->requireCapability('upsert-conflict-target');
@@ -703,7 +794,9 @@ final class Query
         return $this->connection->execute($sql, $statement[1]);
     }
 
-    /** MySQL 明确接受任意唯一键冲突；不接受、也不忽略伪装成指定目标的参数。 */
+    /**
+     * MySQL 明确接受任意唯一键冲突；不接受、也不忽略伪装成指定目标的参数。
+     */
     public function upsertAnyUnique(array $rows, array $updateColumns): int
     {
         $this->dialect->requireCapability('upsert-any-unique');
@@ -722,7 +815,9 @@ final class Query
         return $this->connection->execute($sql, $statement[1]);
     }
 
-    /** @internal Model 已验证完整批次、真实唯一索引与版本存储；此处只生成一条受管冲突 SQL。 */
+    /**
+     * @internal Model 已验证完整批次、真实唯一索引与版本存储；此处只生成一条受管冲突 SQL。
+     */
     public function upsertManaged(array $rows, ?array $uniqueBy, array $updateColumns, ?string $version, ?string $deleted): int
     {
         $this->dialect->requireCapability($uniqueBy === null ? 'upsert-any-unique' : 'upsert-conflict-target');
@@ -764,7 +859,9 @@ final class Query
         return $this->updateValues($values, null);
     }
 
-    /** @internal 模型集合写入；版本列须为真实非空整数列，失败由外层事务回滚。 */
+    /**
+     * @internal 模型集合写入；版本列须为真实非空整数列，失败由外层事务回滚。
+     */
     public function updateGuarded(array $values, ?string $version): int
     {
         if ($version !== null && array_key_exists($version, $values)) {
@@ -773,13 +870,17 @@ final class Query
         return $this->updateValues($values, $version, true);
     }
 
-    /** 单条条件 UPDATE 原子增加；返回数据库报告的影响行数，不预读。 */
+    /**
+     * 单条条件 UPDATE 原子增加；返回数据库报告的影响行数，不预读。
+     */
     public function increment(string $column, int $amount = 1): int
     {
         return $this->adjust($column, $amount, false);
     }
 
-    /** 单条条件 UPDATE 原子减少；负数与零增量拒绝，方向由方法明确。 */
+    /**
+     * 单条条件 UPDATE 原子减少；负数与零增量拒绝，方向由方法明确。
+     */
     public function decrement(string $column, int $amount = 1): int
     {
         return $this->adjust($column, $amount, true);
@@ -833,7 +934,9 @@ final class Query
             . $this->whereSql($this->conditions), array_merge($parameters, $this->conditions->parameters()));
     }
 
-    /** 每行通过一个非 NULL 键匹配；单条 CASE UPDATE 不隐式逐条重试。 */
+    /**
+     * 每行通过一个非 NULL 键匹配；单条 CASE UPDATE 不隐式逐条重试。
+     */
     public function updateMany(string $key, array $rows): int
     {
         $this->writeShape(true);
@@ -880,7 +983,9 @@ final class Query
         return $this->connection->execute($sql, array_merge($parameters, $conditions->parameters()));
     }
 
-    /** 执行单条集合 DELETE 并返回数据库影响行数；默认拒绝无约束写入。 */
+    /**
+     * 执行单条集合 DELETE 并返回数据库影响行数；默认拒绝无约束写入。
+     */
     public function delete(): int
     {
         $this->writeShape(true);
@@ -889,13 +994,17 @@ final class Query
         return $this->connection->execute('DELETE FROM ' . $this->table . $this->whereSql($this->conditions), $this->conditions->parameters());
     }
 
-    /** @internal 添加模型默认范围之前验证调用者提供的写入条件。 */
+    /**
+     * @internal 添加模型默认范围之前验证调用者提供的写入条件。
+     */
     public function assertWriteIntent(): void
     {
         $this->requireWriteIntent();
     }
 
-    /** @internal 集合写入在读取目标前拒绝不能保留的查询形态。 */
+    /**
+     * @internal 集合写入在读取目标前拒绝不能保留的查询形态。
+     */
     public function assertWritable(): void
     {
         $this->writeShape(true);
@@ -991,7 +1100,9 @@ final class Query
         return $query;
     }
 
-    /** 分页校验对应真实表列，SQL 排序仍保留本表别名。 */
+    /**
+     * 分页校验对应真实表列，SQL 排序仍保留本表别名。
+     */
     private function paginationColumn(string $column): string
     {
         return $this->aliasName !== '' && str_starts_with($column, $this->aliasName . '.')
@@ -1042,7 +1153,9 @@ final class Query
         return [$sql, $parameters];
     }
 
-    /** 已形成的集合/分组投影从结果列提取，不能只改写 UNION 首支的列数。 */
+    /**
+     * 已形成的集合/分组投影从结果列提取，不能只改写 UNION 首支的列数。
+     */
     private function extractionQuery(): Query
     {
         return $this->unions !== [] || $this->groups !== [] || $this->aggregated || $this->distinct
@@ -1067,7 +1180,9 @@ final class Query
         return $this->connection->execute($sql, array_merge($row[1], $this->conditions->parameters()));
     }
 
-    /** 让数据库在同一语句中拒绝非法版本，避免 SQLite 溢出升 REAL 或竞争窗口。 */
+    /**
+     * 让数据库在同一语句中拒绝非法版本，避免 SQLite 溢出升 REAL 或竞争窗口。
+     */
     private function versionAssignment(string $version, bool $qualified = false): string
     {
         $target = $this->dialect->identifier($version, false, false);

@@ -19,25 +19,32 @@ use Type\Mqtt\PendingCommit;
 use Type\Orm\Connection;
 use Type\Orm\Db;
 use Type\Runtime\ExecutionScope;
-use Type\Validate\Field;
 use Type\Validate\Input;
 
-/** 平台 MQTT 节点与接收就绪观察；人员复用平台 RBAC，探针使用独立受控凭据。 */
+/**
+ * 平台 MQTT 节点与接收就绪观察；人员复用平台 RBAC，探针使用独立受控凭据。
+ */
 #[Group(prefix: '/platform/broker', namePrefix: 'platform.broker.')]
 final class MqttController
 {
     private static bool $storeQuarantined = false;
 
-    /** @var list<string> 完整存储工作命令；空列表表示没有可靠接收路径。 */
+    /**
+     * @var list<string> 完整存储工作命令；空列表表示没有可靠接收路径。
+     */
     private array $worker;
 
-    /** 网络输入不能覆盖宿主配置；请求连接归当前执行作用域持有。 */
+    /**
+     * 网络输入不能覆盖宿主配置；请求连接归当前执行作用域持有。
+     */
     public function __construct(private Factory $messages, ApplicationContext $context)
     {
         $this->worker = ApplicationContext::centerStoreWorker($context->settings()->text('app.mqtt.command'));
     }
 
-    /** 专用探针认证不依赖数据库；只证明管理HTTP进程仍能处理请求。 */
+    /**
+     * 专用探针认证不依赖数据库；只证明管理HTTP进程仍能处理请求。
+     */
     #[Route('/health/live', name: 'live', middleware: ['mqtt.probe'])]
     public function live(ServerRequestInterface $request): ResponseInterface
     {
@@ -45,7 +52,9 @@ final class MqttController
         return $this->response(['data' => ['alive' => true, 'scope' => 'management_http', 'observed_at' => time()]]);
     }
 
-    /** 可靠接收就绪同时需要新鲜节点观察、已配置持久路径及当次同步存储证明。 */
+    /**
+     * 可靠接收就绪同时需要新鲜节点观察、已配置持久路径及当次同步存储证明。
+     */
     #[Route('/health/ready', name: 'ready', middleware: ['mqtt.probe'])]
     public function ready(ServerRequestInterface $request): ResponseInterface
     {
@@ -54,7 +63,9 @@ final class MqttController
         return $this->response(['data' => $health], $health['ready'] ? 200 : 503);
     }
 
-    /** 固定指标名与32个slot标签；客户端、Topic、运行ID和载荷不会进入时序标签。 */
+    /**
+     * 固定指标名与32个slot标签；客户端、Topic、运行ID和载荷不会进入时序标签。
+     */
     #[Route('/metrics', name: 'metrics', middleware: ['mqtt.probe'])]
     public function metrics(ServerRequestInterface $request): ResponseInterface
     {
@@ -107,13 +118,23 @@ final class MqttController
             ->withBody($this->messages->createStream(implode("\n", $lines) . "\n"));
     }
 
-    /** 有界稳定分页；十五秒未采样标为不可达，缺失指标维持 null。 */
+    /**
+     * 有界稳定分页；十五秒未采样标为不可达，缺失指标维持 null。
+     */
     #[Route('/nodes', name: 'nodes', middleware: ['platform.auth'])]
     public function nodes(ServerRequestInterface $request): ResponseInterface
     {
         $this->identity($request);
-        $query = \_vali(['node_id' => Field::text()->length(0, 64)->from('query'), 'page' => Field::integer()->cast()->range(1, 100000)->from('query'),
-            'per_page' => Field::integer()->cast()->range(1, 100)->from('query')], (new Input([]))->withQuery($request->getUri()->getQuery()));
+        $query = \_vali([
+            'node_id.default' => '',
+            'node_id.length:0,64' => '节点标识长度不正确',
+            'page.default' => 1,
+            'page.integer' => '页码不正确',
+            'page.between:1,100000' => '页码超出范围',
+            'per_page.default' => 20,
+            'per_page.integer' => '每页数量不正确',
+            'per_page.between:1,100' => '每页数量超出范围',
+        ], (new Input([]))->withQuery($request->getUri()->getQuery())->source('query'));
         $connection = $this->connection($request);
         try {
             $rows = $connection->table('platform_mqtt_node');
@@ -138,7 +159,9 @@ final class MqttController
             'generated_at' => $now, 'freshness_seconds' => 15, 'coverage' => 'observed_instances_only', 'health' => $this->health($request)]);
     }
 
-    /** 同步存储读取仍经有截止worker；清理未知后该HTTP进程不再创建新worker。 */
+    /**
+     * 同步存储读取仍经有截止worker；清理未知后该HTTP进程不再创建新worker。
+     */
     private function health(ServerRequestInterface $request): array
     {
         self::$storeQuarantined = self::$storeQuarantined || ResourceQueries::quarantined();

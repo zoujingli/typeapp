@@ -21,21 +21,26 @@ use Type\Core\Http\RequestBody;
 use Type\Orm\Connection;
 use Type\Orm\Db;
 use Type\Runtime\ExecutionScope;
-use Type\Validate\Field;
 use Type\Validate\Input;
 
-/** 双端只读观察的HTTP边界；身份、租户及路由来源不能由额外请求头覆盖。 */
+/**
+ * 双端只读观察的HTTP边界；身份、租户及路由来源不能由额外请求头覆盖。
+ */
 final class ObservationController
 {
     private string $mqttCommand;
 
-    /** 响应工厂和持久统计命令来自启动配置，构造不建立连接。 */
+    /**
+     * 响应工厂和持久统计命令来自启动配置，构造不建立连接。
+     */
     public function __construct(private Factory $messages, ApplicationContext $context)
     {
         $this->mqttCommand = $context->settings()->text('app.mqtt.command');
     }
 
-    /** 列表与详情共用严格筛选和准确身份；平台详情同时指定来源，防止跨表事件ID歧义。 */
+    /**
+     * 列表与详情共用严格筛选和准确身份；平台详情同时指定来源，防止跨表事件ID歧义。
+     */
     #[Route('/platform/audit', name: 'platform.audit', middleware: ['platform.auth'])]
     #[Route('/platform/audit/{source}/{id}', name: 'platform.audit-detail', middleware: ['platform.auth'], constraints: ['source' => 'platform|system', 'id' => '[a-f0-9]{32}'])]
     #[Route('/system/audit', name: 'system.audit', middleware: ['system.auth'])]
@@ -59,7 +64,9 @@ final class ObservationController
         ));
     }
 
-    /** 只复用现有Broker元数据查询；每页绑定当前角色、客户和模拟来源，耗时读取后重新授权。 */
+    /**
+     * 只复用现有Broker元数据查询；每页绑定当前角色、客户和模拟来源，耗时读取后重新授权。
+     */
     #[Route('/platform/broker/resources/{resource}', name: 'platform.broker-resources', middleware: ['platform.auth'])]
     #[Route('/platform/broker/resources/{resource}/{id}', name: 'platform.broker-resource-detail', middleware: ['platform.auth'])]
     #[Route('/center/connections', name: 'center.connections', middleware: ['system.auth'])]
@@ -426,7 +433,9 @@ final class ObservationController
         }
     }
 
-    /** 原操作只读对账；待处理不能当成已断开，跨租户按不存在处理。 */
+    /**
+     * 原操作只读对账；待处理不能当成已断开，跨租户按不存在处理。
+     */
     #[Route('/platform/broker/operations/{id}', methods: ['GET'], name: 'platform.broker-operation', middleware: ['platform.auth'], constraints: ['id' => '[a-f0-9]{32}'])]
     public function connectionOperation(ServerRequestInterface $request): ResponseInterface
     {
@@ -444,7 +453,9 @@ final class ObservationController
         ], $operationId));
     }
 
-    /** 平台观察基础设施，客户观察当前租户设备元数据；均使用独立运行读取权限。 */
+    /**
+     * 平台观察基础设施，客户观察当前租户设备元数据；均使用独立运行读取权限。
+     */
     #[Route('/platform/operations', name: 'platform.operations', middleware: ['platform.auth'])]
     public function operations(ServerRequestInterface $request): ResponseInterface
     {
@@ -457,8 +468,16 @@ final class ObservationController
         if (array_diff(array_keys($input->source('query')), ['name', 'page', 'per_page']) !== []) {
             throw new HttpError(422, 'operations_filter_invalid');
         }
-        $data = \_vali(['name' => Field::text()->length(0, 100)->from('query'), 'page' => Field::integer()->cast()->range(1, 100000)->from('query'),
-            'per_page' => Field::integer()->cast()->range(1, 100)->from('query')], $input) + ['page' => 1, 'per_page' => 20];
+        $data = \_vali([
+            'name.default' => '',
+            'name.length:0,100' => '名称长度不正确',
+            'page.default' => 1,
+            'page.integer' => '页码不正确',
+            'page.between:1,100000' => '页码超出范围',
+            'per_page.default' => 20,
+            'per_page.integer' => '每页数量不正确',
+            'per_page.between:1,100' => '每页数量超出范围',
+        ], $input->source('query'));
         $connection = $this->connection($request);
         $identity = $this->identity($request);
         return $this->response($tenant === '' ? OperationsService::platform($connection, $identity, $this->mqttCommand)
@@ -527,7 +546,9 @@ final class ObservationController
         }
     }
 
-    /** 拒绝路径不保留未经授权的资源标识；准确身份来自服务器会话，不从头或查询参数取得。 */
+    /**
+     * 拒绝路径不保留未经授权的资源标识；准确身份来自服务器会话，不从头或查询参数取得。
+     */
     private function brokerResourceAudit(Connection $connection, ServerRequestInterface $request, Identity $identity, string $realm, string $tenant, array $access, array $parameters, array $result, string $outcome, string $reason): void
     {
         $origin = IdentityService::context($identity, $tenant);

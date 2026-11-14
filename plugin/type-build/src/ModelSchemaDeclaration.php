@@ -9,7 +9,9 @@ use PhpParser\ConstExprEvaluator;
 use PhpParser\Node;
 use PhpParser\ParserFactory;
 
-/** 将简洁模型配置展开为既有类型属性声明；不加载业务类或建立数据库连接。 */
+/**
+ * 将简洁模型配置展开为既有类型属性声明；不加载业务类或建立数据库连接。
+ */
 final class ModelSchemaDeclaration
 {
     /**
@@ -152,11 +154,85 @@ final class ModelSchemaDeclaration
             $overrides[$name] = ['nullable' => $nullable];
         }
         $node->stmts = $retained;
+        $relations = $this->relations($node, $class);
         return ['table' => [
             'name' => $values['table'], 'primary' => $values['pk'] ?? 'id', 'generatedPrimary' => $values['autoIncrement'] ?? true,
             'database' => $values['database'] ?? 'default', 'tenant' => $values['tenantKey'] ?? null,
             'tenantDeclared' => array_key_exists('tenantKey', $values), 'version' => $values['versionKey'] ?? null,
             'createdAt' => $values['createTime'] ?? null, 'updatedAt' => $values['updateTime'] ?? null, 'softDelete' => $values['deleteTime'] ?? null,
-        ], 'fields' => $overrides];
+        ], 'fields' => $overrides, 'relations' => $relations];
+    }
+
+    /**
+     * 读取只含一条字面量返回的关系方法，并换成供构建器生成访问钩子的公开属性。
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function relations(Node\Stmt\Class_ $node, string $class): array
+    {
+        $parameters = [
+            'hasOne' => ['target', 'foreignKey', 'localKey'],
+            'hasMany' => ['target', 'foreignKey', 'localKey'],
+            'belongsTo' => ['target', 'foreignKey', 'ownerKey'],
+            'belongsToMany' => ['target', 'table', 'sourcePivotKey', 'targetPivotKey', 'sourceKey', 'targetKey', 'pivotFields', 'pivotTenant'],
+        ];
+        $kinds = ['hasOne' => 'HasOne', 'hasMany' => 'HasMany', 'belongsTo' => 'BelongsTo', 'belongsToMany' => 'BelongsToMany'];
+        $relations = [];
+        $retained = [];
+        $evaluator = new ConstExprEvaluator(static function (Node\Expr $expression): mixed {
+            if ($expression instanceof Node\Expr\ClassConstFetch && $expression->class instanceof Node\Name
+                && $expression->name instanceof Node\Identifier && $expression->name->toLowerString() === 'class'
+                && !in_array(strtolower($expression->class->toString()), ['self', 'parent', 'static'], true)) {
+                return $expression->class->toString();
+            }
+            throw new \RuntimeException('关系方法只接受字面值与明确的类名');
+        });
+        foreach ($node->stmts as $statement) {
+            if (!$statement instanceof Node\Stmt\ClassMethod || $statement->stmts === null || count($statement->stmts) !== 1
+                || !$statement->stmts[0] instanceof Node\Stmt\Return_ || !$statement->stmts[0]->expr instanceof Node\Expr\MethodCall) {
+                $retained[] = $statement;
+                continue;
+            }
+            $call = $statement->stmts[0]->expr;
+            $kind = $call->name instanceof Node\Identifier ? $call->name->toString() : '';
+            if (!$call->var instanceof Node\Expr\Variable || $call->var->name !== 'this' || !isset($parameters[$kind])) {
+                $retained[] = $statement;
+                continue;
+            }
+            if ($statement->params !== [] || $statement->isStatic() || !$statement->isPublic()) {
+                throw new \RuntimeException('关系方法必须是无参数的公开实例方法：' . $class . '::' . $statement->name);
+            }
+            $name = $statement->name->toString();
+            if (isset($relations[$name])) {
+                throw new \RuntimeException('关系方法重复：' . $class . '::' . $name);
+            }
+            $arguments = [];
+            $named = false;
+            foreach ($call->args as $index => $argument) {
+                if (!$argument instanceof Node\Arg || $argument->unpack) {
+                    throw new \RuntimeException('关系方法参数无效：' . $name);
+                }
+                $key = $argument->name?->toString() ?? ($parameters[$kind][$index] ?? '');
+                if (!in_array($key, $parameters[$kind], true) || array_key_exists($key, $arguments) || ($named && $argument->name === null)) {
+                    throw new \RuntimeException('关系方法参数无效：' . $name . '.' . $key);
+                }
+                $named = $named || $argument->name !== null;
+                $arguments[$key] = $evaluator->evaluateDirectly($argument->value);
+            }
+            if (!is_string($arguments['target'] ?? null) || $arguments['target'] === '') {
+                throw new \RuntimeException('关系方法必须声明目标模型：' . $name);
+            }
+            $relation = ['kind' => $kinds[$kind]] + $arguments;
+            $relations[$name] = $relation;
+            $many = in_array($relation['kind'], ['HasMany', 'BelongsToMany'], true);
+            $property = new Node\Stmt\Property(Node\Stmt\Class_::MODIFIER_PUBLIC, [new Node\Stmt\PropertyProperty($name)]);
+            $property->type = $many ? new Node\Identifier('array') : new Node\NullableType(new Node\Name($arguments['target']));
+            if ($statement->getDocComment() !== null) {
+                $property->setDocComment($statement->getDocComment());
+            }
+            $retained[] = $property;
+        }
+        $node->stmts = $retained;
+        return $relations;
     }
 }

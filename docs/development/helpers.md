@@ -8,21 +8,21 @@
 $query = $connection->table('users')->where('tenant_id', '=', $tenantId);
 $result = _query($query, ['status' => 0, 'keyword' => '中文', 'age' => [18, 40]])
     ->equal('status')
-    ->like(['keyword' => 'name'])
+    ->like('name|login#keyword')
     ->between('age')
     ->query()
     ->orderBy('id')
     ->get();
 ```
 
-`_query(Query|ModelQuery $query, array $input = []): QueryHelper` 保留传入查询的连接、模型和既有范围约束。助手及查询都采用不可变链式行为；忽略返回值不会改变旧查询。`query()` 返回原有 `Query|ModelQuery` 公共执行接口，所有租约关闭、模型水合、软删除和字段类型规则仍由 ORM 负责。
+`_query(Query|ModelQuery $query, array $input = [], ?Closure $refine = null): QueryHelper` 保留传入查询的连接、模型和既有范围约束。第三个参数收到当前助手，并必须返回补充了 `equal`、`like` 或区间条件后的助手。助手及查询都采用不可变链式行为；忽略返回值不会改变旧查询。`query()` 返回原有 `Query|ModelQuery` 公共执行接口，所有租约关闭、模型水合、软删除和字段类型规则仍由 ORM 负责。
 
 四种筛选只处理开发者传入的字段白名单：
 
 | 方法 | 显式输入 | 语义 |
 | --- | --- | --- |
 | `equal('status,id')` | 标量或 null | 绑定等值；null 生成 `IS NULL`，0/false 是有效值 |
-| `like(['keyword' => 'name'])` | 字符串 | 绑定 `%输入%`；`%`、`_`、大小写和排序规则沿用数据库 LIKE 语义 |
+| `like(['keyword' => 'name'])` | 字符串 | 绑定 `%输入%`；`like('tags', ',')` 绑定 `%,输入,%`。输入中的 `%`、`_`、`!` 按字面量匹配，语句带 `ESCAPE '!'` |
 | `in('id')` | 标量列表或逗号分隔文本 | 最多1000个非null、非空值；文本分段 trim；空列表匹配零行 |
 | `between('age')` | `[下界, 上界]` | 两个绑定的 `>=` / `<=` AND 条件，包含边界，不猜测日期或自动交换上下界 |
 
@@ -30,7 +30,7 @@ $result = _query($query, ['status' => 0, 'keyword' => '中文', 'age' => [18, 40
 
 包装 ModelQuery（包括 `Model::search()`）时，`query()` 和 `paginatePage()` 会以 `unknown_search_field` 拒绝未声明的输入键；筛选方法登记字段输入名，`order()` 登记排序与方向输入名，`page/page_size` 为固定分页键。直接包装 Query 时仍只选取白名单输入。助手不把请求中的任意键自动变成筛选条件。
 
-缺失输入和空字符串统一跳过筛选；只在 `equal()` 中接受单个 null。LIKE、IN、区间的 null 明确拒绝，避免 SQL 三值逻辑或不完整区间产生歧义。字段声明即使对应输入缺失也要通过标识符检查，拒绝 `|`、`&`、原生 SQL、排序表达式及动态操作符。选中值始终传入既有绑定接口；不会拼接到 SQL 文本。
+缺失输入和空字符串统一跳过筛选；只在 `equal()` 中接受单个 null。LIKE、IN、区间的 null 明确拒绝，避免 SQL 三值逻辑或不完整区间产生歧义。字段声明即使对应输入缺失也要通过标识符检查。开发者可以用 `|` 表示同一输入匹配任一字段，用 `&` 表示必须同时匹配，并使用 `#` 给出输入名，例如 `name|login#keyword`。请求内容不能提供这些符号或操作符。选中值始终传入既有绑定接口；不会拼接到 SQL 文本。
 
 字符串值最多16 KiB、单次白名单最多100项。ModelQuery 不执行额外的隐式类型转换：整数模型字段对应的 IN 输入应为 `[1, 2]`，而不是期待助手把 `"1,2"` 猜成整数；外部文本先经显式 `Field::integer()->cast()` 等规则转换。
 
@@ -59,7 +59,7 @@ $page = _query($query, ['sort' => 'oldest', 'direction' => 'DESC', 'page' => '2'
 
 客户端只选择一个白名单字段，多列默认顺序由业务明确配置。需要自定义输入键时显式调用 `order($allowed, $defaults, 'orderBy', 'orderType')`；不读取全局请求或同时猜测多个别名。
 
-`Query::orderByIfAbsent()` 与 `ModelQuery::orderByIfAbsent()` 先调用原有标识符、字段映射和方向验证，再只追加尚未出现的列。重复选中已经固定的业务列时，最早的方向和优先级保持不变，不重排原查询；同一个助手反复追加也不会制造新的重复列。现有 `orderBy()` 保持原契约，调用者自己重复 `orderBy()` 造成的非法分页不会被助手掩盖。
+`Query::orderByIfAbsent()` 与 `ModelQuery::orderByIfAbsent()` 先调用原有标识符、字段映射和方向验证，再只追加尚未出现的列。重复选中已经固定的业务列时，最早的方向和优先级保持不变，不重排原查询；同一个助手反复追加也不会制造新的重复列。模型查询用 `order()` 按字段排序，表查询用 `orderBy()` 按列排序；调用者自己重复排序造成的非法分页不会被助手掩盖。
 
 分页继续由底层确认真实单列主键，缺失时追加主键形成稳定顺序，已有主键不重复追加。它仍拒绝不支持的别名/Join/聚合/已有 LIMIT、重复排序、可空/浮点/JSON/二进制排序列或超过八列的分页；白名单不扩大这些能力。默认列表包含八个非主键字段时，追加主键会超过上限并明确失败，不能静默丢掉收尾字段。
 
@@ -98,9 +98,11 @@ $values = _vali(['id' => Field::integer()->cast()->from('route')], $input);
 
 需要明确区分结果的missing/null时使用 `Type\Validate\Helper\ValidateHelper::data()`，返回原有 `Data`，通过 `has()` 判断结果中是否存在字段；显式默认null也存在。它不判断原始请求是否提供：需要该信息时对相应 `Input::source()` 使用 `array_key_exists()`。PATCH、场景、条件、嵌套对象、列表和DTO映射均沿用Schema/Field的真实契约。
 
-`required()` 表示必须提供，不擅自改变现有空字符串语义。需要非空文本时显式追加 `trim()->length(1, 100)`。错误沿用 `ValidationException` 的字段路径与稳定错误码，消息不包含输入值。
+`required()` 表示必须提供，不擅自改变现有空字符串语义。需要非空文本时显式追加 `trim()->length(1, 100)`。错误沿用 `ValidationException` 的字段路径与稳定错误码，说明来自规则里编写的文字，不回显输入值。`body()` 的 `fields` 仍是错误码；写了说明时同时给出 `messages`。物联中心由 `ApiErrors` 返回这个结构。`type-core` 的 HTTP 服务器不把 `ValidationException` 转成字段响应。
 
-只支持 `array<string, Field>` 或 Schema，不隐式解析 `name.require`、`age.integer`、`age.min:0`、`default/value/#alias` 等字符串规则。传入这些格式会明确抛出 `InvalidArgumentException`，不静默放过。
+`_version()` 展开乐观锁的必填、整数和闭区间。`_version()` 从 1 到 2147483646；`_version('version', 0)` 用于新建；`_version('user_version', 1, '账号版本')` 更换字段名和说明。
+
+`_vali()` 同时接受 `Field` 对象和 `字段.规则` 字符串。字符串规则的输入别名可以写在字段后，也可以写在规则后：`age#years.integer` 与 `age.integer#years` 都从输入 `years` 读取，结果字段仍是 `age`。规则参数里的 `#` 仍属于参数本身，不把 `matches` 表达式拆成别名。`date` 默认校验 `Y-m-d`，也可写 `date:Y-m-d H:i:s` 或 `date:H:i:s`，并拒绝溢出日期。`confirmed` 要求同一来源里存在 `{字段}_confirmation` 且值相同；`confirmed:repeat` 则改为比较 `repeat`。`regex` 与 `matches` 相同，参数是完整正则，例如 `phone.regex:/^1\d{10}$/`。`url` 只接受 `http` 或 `https`。字符串规则里的 `integer`、`numeric` 和 `boolean` 会转换 `12`、`36.5`、`1` 这类文本。`array` 接受列表或关联数组；`list` 只接受下标连续的列表。列表项 `'name'` 或 `'code#barcode'` 直接读取输入，缺失时结果为 null。不含点号的键写入固定值，例如 `'realm' => 'system'`，与 `realm.value` 相同。
 
 ### 显式字段默认值
 
