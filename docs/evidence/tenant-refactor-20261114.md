@@ -165,3 +165,7 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 - 前端 `pnpm@12.18.0 typecheck`、生产构建（7,875 modules）和 Vitest（2 files / 3 tests）通过；PHP CS Fixer 918 文件、0 修正；文档一致性检查 1,507 处引用通过。
 - MQTT 运行配置与配额页面在首个成功响应前不再展示伪默认数据，增加 Spin/Empty/loading；权限变化会清空旧数据。MQTT 快捷导航现在同时校验 `platform.broker.read` 和服务端菜单目录；应用、注册资格和转配详情抽屉接入 Vben loading 状态；角色与菜单授权加载提供 loading/empty 反馈；用户表单补齐自动填充语义；客户超管读取失败显示页面错误。
 - `TenantContext::allowsAuthority()` 对 Host 与配置的 `TENANT_BASE_DOMAIN` 统一小写；实际静态 HTTP 服务以 `Host: DEMO.LOCALHOST:18124` 请求公开上下文返回 200 且绑定正确 Tenant。真实 Chromium 进一步验证 `demo.localhost` 子域登录不显示客户下拉并保持子域名，`/t/{tenant_id}/` 固定路径登录不显示下拉并保持固定路径。
+
+## MQTT 授权页 Vben Form 收口后的最终产物
+
+MQTT 授权主体的固定字段（主体名称、登录名、接入密码、轮换凭据和启用状态）已切换到 Vben Form；证书吊销、证书换证预览和 Topic 规则保留为动态业务区域。当前静态 SQLite AOT 重新编译 298 个 C++ 文件通过，build id 为 `1356c09b6bfc91a85c5ecf58b75951bb133318e79cc002856336f3b7c1d16c47`，SHA-256 为 `4d9ea4bc2e2ce38af564bd9e93765a8144aae4080072e649791506ded7d59409`。同一程序的 `tests/tenant.php sqlite` 与 `tests/native-single-program.php build/app/type-app` 均通过；前端 typecheck 和生产构建通过。
