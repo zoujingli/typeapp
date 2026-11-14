@@ -44,9 +44,9 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 
 设备注册首次 SQLite 闭环发现 `DeviceOwnership` 创建时遗漏可空字段，已补齐 `ended_at`、`expires_at`、`expiry_context` 的显式 `null` 并复验通过。
 
-仓库目标工具链记录在 `toolchain.lock.json`：PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8；本机实际 Node.js 为 26.13.1，pnpm 为 11.15.1，而前端工作区声明 pnpm 12.18.0。前端检查结果仍只证明在当前可用 Node/pnpm 环境下的静态与生产构建行为。
+仓库目标工具链记录在 `toolchain.lock.json`：PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8；Node.js 26.13.1 和项目声明的 pnpm 12.18.0 已通过 `npx --yes pnpm@12.18.0` 实际执行验证，系统全局 pnpm 11.15.1 不作为目标版本证据。
 
-仍未验证：静态 SDK 单程序交付、删除源码后的发布包运行、正式平台/profile 矩阵、物联中心 AOT 产物上的真实设备身份 MQTT 持久会话/跨 Tenant 撤权与转配，以及 Windows SDK。当前 `--shared-development` 产物用于开发和原生回归，不能替代静态单程序发布候选；直接运行原生程序时必须通过发布启动器或显式提供其受控 `PHPRC`，否则 Swoole 共享模块不会加载。上述 MQTT 结果属于独立通信组件源运行验收，不替代当前应用生产产物验收。补齐匹配的静态 SDK 和真实 MQTT 设备环境后，按 `docs/development/test-entrypoints.md` 顺序重跑剩余门禁，并以同一源码、锁文件和原生产物记录最终结果。
+仍未验证：正式平台/profile 矩阵、Windows SDK、物联中心 AOT 产物上的真实设备身份 MQTT 持久会话/跨 Tenant 撤权与转配。静态 SDK 单程序、删除源码后的安装运行、embed-probe、加载项审计和 SQLite 单程序业务验收已在追加章节通过；独立通信组件的源运行 MQTT 结果仍不替代应用生产产物验收。补齐正式平台、Windows 和真实设备环境后，按 `docs/development/test-entrypoints.md` 顺序重跑剩余门禁，并以同一源码、锁文件和原生产物记录最终结果。
 
 ## 当前提交追加验证
 
@@ -62,9 +62,9 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 - 同一当前 AOT 程序的 `tests/tenant.php sqlite`、`mysql`（8.4.11）和 `pgsql`（17.11）Tenant 闭环均通过。
 - 同一锁定环境的 `tests/model-sync.php`：真实 MySQL 结构反向同步、注释、生成列、字段保护和 Tenant CRUD 通过。
 
-本追加记录仍不扩大“未验证及阻塞”中列出的静态单程序、无源码部署、正式平台矩阵和真实设备持久 MQTT 边界。
+本历史段记录模型状态变更时的验证范围；当前静态发布状态以末尾“静态 embed 修复与无源码验收追加”为准。
 
-## 当前列表与 Web 精修追加验证
+## 历史列表与 Web 精修追加验证（静态发布前）
 
 本次追加提交为 `bfbac97`、`6e83493` 和 `5390371`，分别收口普通业务列表的 Model-first 查询入口、精修 Vben 工作区导航和同步模型/页面边界文档。
 
