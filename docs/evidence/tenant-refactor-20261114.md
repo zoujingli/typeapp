@@ -171,3 +171,7 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 MQTT 授权主体的固定字段（主体名称、登录名、接入密码、轮换凭据和启用状态）已切换到 Vben Form；证书吊销、证书换证预览和 Topic 规则保留为动态业务区域。当前静态 SQLite AOT 重新编译 298 个 C++ 文件通过，build id 为 `1356c09b6bfc91a85c5ecf58b75951bb133318e79cc002856336f3b7c1d16c47`，SHA-256 为 `4d9ea4bc2e2ce38af564bd9e93765a8144aae4080072e649791506ded7d59409`。同一程序的 `tests/tenant.php sqlite` 与 `tests/native-single-program.php build/app/type-app` 均通过；前端 typecheck 和生产构建通过。
 
 随后修复了抽屉打开顺序：先挂载 Vben Form，再写入初始值。真实 Chromium 通过当前源码 Vite 页面验证平台登录、MQTT 授权页面、新增主体抽屉、Vben 字段渲染以及空提交校验；最终静态 SQLite AOT build id 为 `50eb5ab6b13c01075a88afbedae9c8b7f1707614cdc8f44dff33430a80df0560`，SHA-256 为 `9037f2ed2eee04d32d317978a88078f12ae7dc5b97350e3d6e0c829c8f037d99`，同一程序的 Tenant 和单程序验收再次通过。
+
+抽屉时序修复后的最终静态 SQLite AOT build id 为 `50eb5ab6b13c01075a88afbedae9c8b7f1707614cdc8f44dff33430a80df0560`，SHA-256 为 `9037f2ed2eee04d32d317978a88078f12ae7dc5b97350e3d6e0c829c8f037d99`；同一程序再次通过 Tenant 与单程序验收。真实浏览器的空提交校验显示主体名称和登录名字段错误，抽屉保持打开，未发起写入请求。
+
+同一静态程序直接提供页面时再次完成平台登录、MQTT 授权页面和“新增接入主体”弹层 smoke；主体名称、登录名、接入密码、轮换凭据、启用主体和 Topic 规则均正确渲染，证明最终交付产物包含该 Vben Form 修复。
