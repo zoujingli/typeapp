@@ -116,4 +116,15 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 
 - 修复后的最终 macOS ARM64 PostgreSQL 静态 AOT 程序 build id 为 `f102346735a8a7245a4772805da10f2e028985c43dd505be3b180db245b2b2b5`，SHA-256 为 `ae3ad2f822bda19f71225df57418d4571599f4bec15116f12c060d98ef31a0e3`，profile 为 `pgsql`，运行时链接为 `static`。
 - `build/aot-device-mqtt-recheck.php` 使用真实 PostgreSQL 17.11 同步备库、当前 AOT 程序和 TLS Broker 完成通过：Tenant/设备注册、凭据签发、设备首次 TLS CONNECT、持久会话重连并返回 Session Present、撤权后现有连接关闭、旧凭据重连被拒绝。最终回执为 `status=passed`、`session_present=true`、`revocation_reconnect_denied=true`。
+
+## 当前代码基线浏览器追加验收
+
+在当前 Tenant 代码基线的全新 SQLite 安装上，使用 Playwright CLI 1.65.0 运行真实 Chromium 浏览器 smoke：
+
+- 主域 `/#/system/login` 展示客户搜索选择、账号和密码；客户选项加载后标题、Logo 文案和品牌名称随客户配置更新，登录成功进入 `/t/{tenant_id}/#/system/profile`。
+- 进入 Center 后，Vben 标准导航展示“产品分类、注册资格、设备管理、接入应用、连接观察、设备转配”分组；产品列表使用 Vben 查询表单、VXE 表格、分页、创建 Modal，已读取真实分类记录并打开创建弹层。
+- 固定路径深链接刷新后仍恢复到业务页面；`/system/users` 深链接显示用户查询表单、状态筛选、用户列表和操作列，浏览器标题同步为“用户管理 · 客户名称”。
+- 375×812 窄屏下产品列表、查询区、表格和分页无横向溢出；Vben 偏好面板可切换深色主题，刷新后主题保持。
+
+本次只覆盖登录入口、固定路径深链接、System 用户列表、Center 分类列表/弹层、窄屏和深色偏好，未将其扩大为所有业务页面、所有 CRUD、子域名浏览器入口或正式平台矩阵已通过。
 - 本轮临时 PostgreSQL 主库、同步备库、HTTP、Broker 和探针进程均已停止，工作区没有遗留运行进程。
