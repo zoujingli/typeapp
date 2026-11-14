@@ -7,7 +7,7 @@ const users = () => import('#/views/shared/identity/users.vue');
 const roles = () => import('#/views/shared/identity/roles.vue');
 
 export const systemRoutes: RouteRecordRaw = { path: '/system', component: basic, redirect: '/system/overview', meta: { realm: 'system', title: '客户系统' }, children: [
-    { path: '/system/overview', component: overview, meta: { title: '工作台', icon: 'lucide:layout-dashboard', order: 0 } },
+    { path: '/system/overview', component: overview, meta: { title: '工作台', icon: 'lucide:layout-dashboard', order: 0, permission: 'system.overview.read' } },
     { path: '/system/profile', component: profile, meta: { title: '个人中心', icon: 'lucide:user', order: 1 } },
     { path: 'groups/access', name: 'system-directory-access', meta: { directory: true, title: '用户与权限', icon: 'lucide:users-round', order: 10 }, children: [
       { path: '/system/users', component: users, meta: { title: '用户管理', icon: 'lucide:users', order: 10, permission: 'system.users.read' } },
