@@ -224,3 +224,9 @@ MQTT 授权主体的固定字段（主体名称、登录名、接入密码、轮
 该浏览器批次覆盖主域客户选择、固定路径登录、真实 System 工作台和 Vben 工具；子域浏览器入口、全部业务页逐项 CRUD、Windows/Linux 正式矩阵、真实 DNS/TLS 和 MQTT 设备生产链路仍保持未验证。
 
 在同一当前 AOT SQLite 服务上继续执行批量真实 Chromium 验收：Platform 20 条已登记路由、System/Center 11 条业务路由逐一深链接访问，页面标题均与当前菜单一致，未出现页面不存在、网络错误或内部错误。随后在 Center 产品分类页通过 Vben 弹层完成创建、列表读取、编辑、二次确认删除，最终列表恢复为空；服务日志确认对应 POST 201、PATCH 200 和 DELETE 200。该批次绑定 build id `bcf8c6fa2ea0d010551a3d331156fef9ad9df7e3628b9447ca7b05b25e34fa40` 和 SHA-256 `1ca1cb2e8184b41b2263df43e25aed6467a982f5dbf48454dcd880501f025d5a`。
+
+## 当前源码 SQLite 静态生产追加验证
+
+在 macOS ARM64 27.2.1、锁定 PHP 8.5.12 ZTS、PHPX 2.9.8、Swoole 6.3.0RC1 和 SQLite 静态 SDK 上，当前源码完成 298 个 C++ 文件的静态编译链接。产物 `build/app/type-app` build id 为 `6ed841400dbb4ab7a4c4de93586eb3e15dfee87bc2bf3efbbccb4636f0cd3277`，SHA-256 为 `b901ef778a02b77307df1c387f5bb11e0551f0d09190be352d6497b23a8bf9db`，运行时链接为 `static`，profile 为 `sqlite`，未携带外置资源。
+
+同一程序的 `tests/tenant.php sqlite build/app/type-app` 和 `tests/native-single-program.php build/app/type-app` 均通过；后者覆盖只读程序目录、不同工作目录、外部 PHP 配置隔离、内嵌资源与许可材料、业务 HTTP 和优雅停止。该结果仅覆盖 macOS ARM64 SQLite profile；Windows/Linux profile、MySQL/PostgreSQL 静态 profile 及正式跨平台矩阵仍未验证。
