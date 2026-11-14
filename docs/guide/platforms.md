@@ -8,7 +8,7 @@ Linux x64 / ARM64、macOS ARM64、Windows x64 均有原生编译与运行记录�
 
 ## 当前平台状态
 
-当前主线的 Tenant 代码基线为 `8e8bfc9`，后续提交仅同步验收文档。本轮在 macOS ARM64 完成 PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8、Swoole 6.3.0RC1 的前端构建、全量 AOT、SQLite/MySQL/PostgreSQL 管理链路及真实 TLS MQTT 设备链路；完整证据见[当前 Tenant 重构验收记录](../evidence/tenant-refactor-20261114.md)。
+当前主线 Tenant 代码基线为 `b35e597`。本轮在 macOS ARM64 完成 PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8、Swoole 6.3.0RC1 的前端构建、全量 AOT、SQLite/MySQL/PostgreSQL 管理链路及真实 TLS MQTT 设备链路；完整证据见[当前 Tenant 重构验收记录](../evidence/tenant-refactor-20261114.md)。
 
 | 平台 | 当前提交的实际结果 | 当前边界 |
 | --- | --- | --- |
