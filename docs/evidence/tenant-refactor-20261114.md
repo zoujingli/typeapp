@@ -53,6 +53,7 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 提交 `1fb2a25fca07e128975290a41a117a3f7417adf7` 后，针对 ORM 内部状态槽改名及恢复模型 `state` 字段重新执行：
 
 - `bin/typeapp-prepare --json`：通过；当前模型生成包含 `CenterRecovery::getState()`。
+- 在未注入 AOT runtime profile、仅使用锁定 PHP 8.5.12 ZTS 默认扩展配置下运行 PHPUnit：309 tests、18,029 assertions 全部通过。
 - `ProjectStructureTest`、`ModelFirstBoundaryTest`、`ModelSchemaSynchronizerTest`：15 tests、631 assertions 通过。
 - `composer cs-check`：922 个文件通过，0 个待修正。
 - `php tests/check.php`：969 个文件、3 个分发拒绝用例、文档站边界检查通过。
