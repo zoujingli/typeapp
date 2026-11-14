@@ -4,7 +4,10 @@ declare(strict_types=1);
 // 在本轮专用真实数据库中核对统一恢复状态机；不代表物理备份、复制或 MQTT/TLS 验收。
 ini_set('zend.exception_ignore_args', '1');
 require dirname(__DIR__) . '/support.php';
-require dirname(__DIR__, 2) . '/vendor/autoload.php';
+$root = dirname(__DIR__, 2);
+require $root . '/vendor/autoload.php';
+require $root . '/bin/typeapp-prepare';
+typeAppDevelopmentBuilder($root)->loadConfiguration($root . '/docs/build-config/type-app.json');
 
 use app\center\service\RecoveryService;
 use Type\Core\Http\HttpError;
@@ -20,7 +23,9 @@ Type\Runtime\CoroutineRuntime::run(static function (): void {
     $database = new Type\Orm\DatabaseManager(['default' => $driver]);
     $scope = new Type\Runtime\ExecutionScope();
     try {
-        $connection = $database->connect($scope);
+        Type\Orm\Db::configure($database);
+        $scope->run(static function () use ($database): void {
+        $connection = Type\Orm\Db::connection('default', true);
         $snapshot = RecoveryService::snapshot($connection);
         $hashes = static function (array $records, string $kind): array {
             return array_column(array_values(array_filter($records, static fn (array $record): bool => $record['kind'] === $kind)), 'sha256', 'id');
@@ -102,6 +107,7 @@ Type\Runtime\CoroutineRuntime::run(static function (): void {
         RecoveryService::ready($connection);
         expect(RecoveryService::restore($connection, $id) === $state, '恢复完成后重试不幂等');
         echo json_encode(['state' => $state['state']], JSON_THROW_ON_ERROR) . "\n";
+        });
     } finally {
         $scope->close();
         $database->close();

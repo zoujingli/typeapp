@@ -16,6 +16,7 @@ use Type\Mqtt\QuotaUpdates;
 use Type\Mqtt\ResourceConnectionObserver;
 use Type\Orm\Connection;
 use Type\Orm\DatabaseManager;
+use Type\Orm\Db;
 use Type\Runtime\Deadline;
 use Type\Runtime\ExecutionScope;
 
@@ -63,12 +64,15 @@ final class NodeAccess implements IdentityAccessPolicy, CertificateAccessPolicy,
         $this->crlFetch = new CrlHttpsFetch();
         $scope = new ExecutionScope(new Deadline(2.0));
         try {
-            $connection = $this->database->connect($scope);
-            CompatService::assertRuntime($connection);
-            RecoveryService::ready($connection);
-            AccessService::ensureBootstrap($connection, $username, $password, $topicPrefix);
-            QuotaService::ensureBootstrap($connection, $limits === [] ? QuotaService::defaults() : $limits);
-            RuntimeService::ensureBootstrap($connection, RuntimeService::fromListener($this->listener));
+            Db::configure($this->database);
+            $scope->run(function () use ($username, $password, $topicPrefix, $limits): void {
+                $connection = Db::connection('default', true);
+                CompatService::assertRuntime($connection);
+                RecoveryService::ready($connection);
+                AccessService::ensureBootstrap($connection, $username, $password, $topicPrefix);
+                QuotaService::ensureBootstrap($connection, $limits === [] ? QuotaService::defaults() : $limits);
+                RuntimeService::ensureBootstrap($connection, RuntimeService::fromListener($this->listener));
+            });
         } finally {
             $scope->close();
         }

@@ -3,7 +3,10 @@ declare(strict_types=1);
 
 // 模拟受控节点上报，验证真实数据库及人员 HTTP 投影，不作为真实 MQTT/TLS 连接证据。
 ini_set('zend.exception_ignore_args', '1');
-require dirname(__DIR__, 2) . '/vendor/autoload.php';
+$root = dirname(__DIR__, 2);
+require $root . '/vendor/autoload.php';
+require $root . '/bin/typeapp-prepare';
+typeAppDevelopmentBuilder($root)->loadConfiguration($root . '/docs/build-config/type-app.json');
 
 Type\Runtime\CoroutineRuntime::enableIo();
 Type\Runtime\CoroutineRuntime::run(static function (): void {
