@@ -229,4 +229,14 @@ MQTT 授权主体的固定字段（主体名称、登录名、接入密码、轮
 
 在 macOS ARM64 27.2.1、锁定 PHP 8.5.12 ZTS、PHPX 2.9.8、Swoole 6.3.0RC1 和 SQLite 静态 SDK 上，当前源码完成 298 个 C++ 文件的静态编译链接。产物 `build/app/type-app` build id 为 `6ed841400dbb4ab7a4c4de93586eb3e15dfee87bc2bf3efbbccb4636f0cd3277`，SHA-256 为 `b901ef778a02b77307df1c387f5bb11e0551f0d09190be352d6497b23a8bf9db`，运行时链接为 `static`，profile 为 `sqlite`，未携带外置资源。
 
-同一程序的 `tests/tenant.php sqlite build/app/type-app` 和 `tests/native-single-program.php build/app/type-app` 均通过；后者覆盖只读程序目录、不同工作目录、外部 PHP 配置隔离、内嵌资源与许可材料、业务 HTTP 和优雅停止。该结果仅覆盖 macOS ARM64 SQLite profile；Windows/Linux profile、MySQL/PostgreSQL 静态 profile 及正式跨平台矩阵仍未验证。
+同一程序的 `tests/tenant.php sqlite build/app/type-app` 和 `tests/native-single-program.php build/app/type-app` 均通过；后者覆盖只读程序目录、不同工作目录、外部 PHP 配置隔离、内嵌资源与许可材料、业务 HTTP 和优雅停止。该结果仅覆盖 macOS ARM64 SQLite profile；Windows/Linux profile 和正式跨平台矩阵仍未验证，MySQL/PostgreSQL 的当前源码静态 profile 见下节。
+
+## 当前源码 MySQL/PostgreSQL 静态 profile 追加验证
+
+在同一 macOS ARM64、PHP 8.5.12 ZTS、PHPX 2.9.8、Swoole 6.3.0RC1 和锁定前端清单上，分别重建当前源码的 MySQL 与 PostgreSQL 静态程序；每个 profile 均编译链接 298 个 C++ 文件并通过静态 SDK embed 检查。
+
+- MySQL 程序保存在 `build/current-aot-mysql/type-app`，SHA-256 为 `256b409a9c0ede0b73828534c2e20ae2f9d1bcff5d9ffab209b2b9db6f3ef299`；SDK manifest SHA-256 为 `7fa9162a4991ee556fc5982a604c6fbf3078c628b5650eb97510a672929dd9a2`，embed 证据为 `build/static-sdk-probe-09d5918bcc28/verification.json`。
+- PostgreSQL 程序保存在 `build/current-aot-pgsql/type-app`，SHA-256 为 `02301ea6581559dcdfebdc4dbc506858aeb7fc929008a27d22f68de82639cac2`；SDK manifest SHA-256 为 `36428cb34f70290cad227f045aaf231abe8afe8933300afb55c1ca1da57acaeb`，embed 证据为 `build/static-sdk-probe-bd937f37f690/verification.json`。
+- 同一程序分别执行 `tests/tenant.php mysql .cache/macos-mysql/mysql-8.4.11-macos15-arm64 build/current-aot-mysql/type-app` 与 `tests/tenant.php pgsql .cache/macos-libpq/17.11 build/current-aot-pgsql/type-app` 通过，覆盖空库安装、独立同名账号、主域/固定路径/子域入口、RBAC、独立品牌、模拟交接、MQTT 模拟观测、恢复核对及真实 HTTP Tenant 隔离。
+
+本节只证明当前 macOS ARM64 的两个静态数据库 profile；Windows/Linux profile、真实 DNS/TLS Web 入口、完整 MQTT 设备生产链路和正式跨平台矩阵继续保持未验证。
