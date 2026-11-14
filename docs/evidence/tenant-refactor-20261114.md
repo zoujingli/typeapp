@@ -214,3 +214,11 @@ MQTT 授权主体的固定字段（主体名称、登录名、接入密码、轮
 - 同一程序 `tests/native-single-program.php build/app/type-app` 通过，覆盖只读程序目录、不同工作目录、外部 INI 隔离、内嵌许可、Platform/System/Center 业务、HTTP 和优雅停止；证据为 `build/single program-a8eeab951830/verification.json`。
 - 系统 PHP 直接执行 Tenant 夹具时因缺少原生 Swoole 被拒绝，随后使用锁定 PHP 8.5.12 ZTS 和原生 Swoole profile 重跑通过；该前置环境拒绝不计为业务失败。
 - Windows/Linux 正式 profile、真实 DNS/TLS Web 入口和全量业务页面逐页 CRUD 仍未验证。
+
+## 工作台路由权限与真实浏览器追加验证
+
+提交 `7210400` 为 Platform/System 工作台静态路由补齐 `platform.overview.read` 和 `system.overview.read`，修复无工作台权限账号通过深链接访问工作台的问题。当前锁定 macOS ARM64 共享开发 AOT 重新编译 301 个 C++ 文件通过，build id 为 `bcf8c6fa2ea0d010551a3d331156fef9ad9df7e3628b9447ca7b05b25e34fa40`，SHA-256 为 `1ca1cb2e8184b41b2263df43e25aed6467a982f5dbf48454dcd880501f025d5a`；同一产物注入受控 runtime profile 后执行 `tests/tenant.php sqlite` 通过。
+
+在同一 AOT SQLite 服务上使用真实 Chromium 完成一条独立临时安装：主域 `/#/system/login` 展示真实 Tenant 下拉，选择客户后标题、品牌和登录字段更新；输入客户超管后跳转 `/t/{tenant_id}/#/system/overview`，工作台真实读取产品、设备、应用和注册资格分页统计；顶部搜索、偏好、主题、语言、时区、全屏、锁屏和用户入口均渲染。偏好面板真实打开并显示外观、布局、快捷键和通用页签。临时服务、数据库、浏览器和凭据已清理。
+
+该浏览器批次覆盖主域客户选择、固定路径登录、真实 System 工作台和 Vben 工具；子域浏览器入口、全部业务页逐项 CRUD、Windows/Linux 正式矩阵、真实 DNS/TLS 和 MQTT 设备生产链路仍保持未验证。
