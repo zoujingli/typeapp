@@ -15,6 +15,7 @@ use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Orm\Db;
 use Type\Orm\Model;
+use Type\Orm\ModelConditions;
 use Type\Orm\ModelQuery;
 use Type\Runtime\ExecutionScope;
 
@@ -170,12 +171,19 @@ final class RoleService
             $query = $query->where('id', '=', $id);
         }
         $query = $query->with($kind === 'users' ? 'roles' : 'menus');
+        $search = (string)($filters['search'] ?? '');
+        if ($search !== '') {
+            $pattern = '%' . $search . '%';
+            $query = $kind === 'users'
+                ? $query->whereGroup(static fn (ModelConditions $conditions): ModelConditions => $conditions
+                    ->where('login', 'LIKE', $pattern)->orWhere('name', 'LIKE', $pattern))
+                : $query->where('name', 'LIKE', $pattern);
+        }
         $page = \_query($query, [
-            'search' => $filters['search'] ?? '',
             'enabled' => ($filters['enabled'] ?? -1) === -1 ? '' : (bool)$filters['enabled'],
             'page' => $filters['page'] ?? 1,
             'page_size' => $filters['per_page'] ?? 20,
-        ])->like('search')->equal('enabled')
+        ])->equal('enabled')
             ->order(['created_at' => 'created_at', 'id' => 'id'], ['created_at' => 'DESC', 'id' => 'ASC'])
             ->paginatePage(20, 100, 100000);
         $items = [];

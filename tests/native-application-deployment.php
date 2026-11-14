@@ -200,7 +200,7 @@ function verifyNativeApplicationDeployment(string $project, string $package, str
                 expect($user->status === 200, '部署平台人员创建失败');
                 $saved = $user->json()['data'];
                 $listed = $client->request('GET', '/platform/users?search=package-user', $headers);
-                expect($listed->status === 200 && $listed->json()['data']['total'] === 1, '部署平台人员查询失败');
+                expect($listed->status === 200 && $listed->json()['total'] === 1, '部署平台人员查询失败');
                 $invalid = $client->request('PATCH', '/platform/users/' . $saved['id'], $headers, json_encode([
                     'version' => 1, 'login' => 'package-user', 'name' => '资料', 'password' => $password,
                 ], JSON_THROW_ON_ERROR));
