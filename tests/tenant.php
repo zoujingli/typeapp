@@ -236,6 +236,9 @@ try {
     $deletable = $request('POST', $prefix . '/system/roles', ['name' => '待删除', 'menu_ids' => []], $userToken)['data'];
     $request('DELETE', $prefix . '/system/roles/' . $deletable['id'], ['version' => $deletable['version']], $userToken);
     $request('GET', $prefix . '/system/roles/' . $deletable['id'], [], $userToken, 404);
+    $deletableUser = $request('POST', $prefix . '/system/users', ['login' => 'delete-user', 'name' => '待删除账号', 'password' => bin2hex(random_bytes(16))], $userToken)['data'];
+    $request('DELETE', $prefix . '/system/users/' . $deletableUser['id'], ['version' => $deletableUser['version']], $userToken);
+    $request('GET', $prefix . '/system/users/' . $deletableUser['id'], [], $userToken, 404);
     $product = $request('POST', $prefix . '/center/products', ['name' => '温度设备', 'description' => '原始通信分类'], $userToken, 201)['data'];
     expect($product['tenant_id'] === $first['tenant']['id'], '分类未使用入口客户');
     expect($request('GET', $prefix . '/center/products', [], $userToken)['total'] === 1, '分类分页无效');

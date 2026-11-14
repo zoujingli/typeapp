@@ -240,3 +240,15 @@ MQTT 授权主体的固定字段（主体名称、登录名、接入密码、轮
 - 同一程序分别执行 `tests/tenant.php mysql .cache/macos-mysql/mysql-8.4.11-macos15-arm64 build/current-aot-mysql/type-app` 与 `tests/tenant.php pgsql .cache/macos-libpq/17.11 build/current-aot-pgsql/type-app` 通过，覆盖空库安装、独立同名账号、主域/固定路径/子域入口、RBAC、独立品牌、模拟交接、MQTT 模拟观测、恢复核对及真实 HTTP Tenant 隔离。
 
 本节只证明当前 macOS ARM64 的两个静态数据库 profile；Windows/Linux profile、真实 DNS/TLS Web 入口、完整 MQTT 设备生产链路和正式跨平台矩阵继续保持未验证。
+
+## 用户删除乐观版本回归
+
+真实 Chromium 逐页 CRUD 验收发现：新建 System 用户后立即执行“更多 → 删除”，接口返回 `stale_version`，确认框保持打开。根因是删除流程先撤销该账号会话并推进账号版本，随后继续使用旧 Model 实例删除，ORM 乐观锁拒绝了已过期实例。
+
+当前修复在同一授权事务内撤销会话后重新加载最新用户 Model，再清理角色关联并删除。`tests/tenant.php` 已增加用户创建、删除和删除后 404 的真实 HTTP 回归断言；SQLite、MySQL、PostgreSQL 动态与静态 Tenant 验收均通过。
+
+- 当前 SQLite 静态程序：`build/current-aot-sqlite/type-app`，build id `fe2f71e0758309b2e102806b7df0ea4eff87d00e17b69141ac7c0f5256eb4a29`，SHA-256 `d51a041d14e3fee060a18aa1d0570d5d8ab40beecedb570bde97f34a2454c479`。
+- 当前 MySQL 静态程序：`build/current-aot-mysql/type-app`，build id `68cd1c807e5cdfd075d4b3d2650333f191e556bc2a367a69f5784e551748e50c`，SHA-256 `fde097628d67fbf5e0f1006edbdb9beff3b71d451d310da43a11315ba2c1869d`。
+- 当前 PostgreSQL 静态程序：`build/current-aot-pgsql/type-app`，build id `9a48218e53fda8030481a62f7daec1faa95c9c51d919a41922a88e02ff30a580`，SHA-256 `4b25eb469cd6557ff9e86440107d74df67efaa60831b9d6f4230d9340b1736be`。
+
+同一修复还通过完整 PHPUnit（309 tests / 18,031 assertions）、公共检查、文档一致性检查、前端 typecheck 和定向 Vitest；Windows/Linux 当前源码矩阵、真实 DNS/TLS 部署和完整设备生产链路仍按未验证处理。

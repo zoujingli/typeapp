@@ -229,6 +229,8 @@ final class RoleService
                     $user = self::userQuery($realm)->findOrFail($id);
                     self::version($user, $data['version']);
                     $identities->change($id, 'sessions', $data, $current);
+                    // 撤销会话会推进账号版本；删除必须基于同一事务内的最新模型，不能继续使用旧实例。
+                    $user = self::userQuery($realm)->findOrFail($id);
                     $user->relation('roles')->sync([]);
                     $user->delete();
                     AuditLog::append(Db::connection('default', true), $tenant === '' ? null : $tenant, $current, $action, $id, 'success', [], $realm);
