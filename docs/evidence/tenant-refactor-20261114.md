@@ -82,4 +82,4 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 - 同一 AOT 产物注入受控 runtime profile 后，`tests/tenant.php sqlite`、`mysql`（MySQL 8.4.11）和 `pgsql`（PostgreSQL 17.11）Tenant 闭环全部通过；覆盖空库安装、模块表前缀、登录入口、RBAC、品牌、模拟交接、MQTT 模拟观测、恢复核对和真实 HTTP 隔离。
 - `tests/model-sync.php` 在真实 MySQL 8.4.11 上通过预览、生成、重复同步、字段注释、默认值、生成列、字段增删保护、非法输入拒绝和 Tenant 隔离 CRUD。
 - AOT 首次未注入 runtime profile 时的 MySQL `internal_error` 已定位为启动配置缺失；补充 `PHPRC` 和 `PHP_INI_SCAN_DIR` 后同一产物通过，不能把首次配置错误记作数据库兼容性失败。
-- 本机 macOS ARM64 以 `TYPE_STATIC_MINIMUM_MACOS=27.0` 成功制备 SQLite 静态 SDK，清单位于任务临时目录并完成输入摘要与许可登记；随后使用已适配 PHPX 线程 SDK 进行静态应用构建时，embed-probe 以退出码 `-1` 终止，未生成可接受的静态单程序候选。当前静态 SDK 成功不能替代静态应用链接、无源码运行和发布包验收。
+- 本机 macOS ARM64 以 `TYPE_STATIC_MINIMUM_MACOS=27.0` 成功制备 SQLite 静态 SDK，清单位于任务临时目录并完成输入摘要与许可登记；随后使用已适配 PHPX 线程 SDK 进行静态应用构建时，embed-probe 子进程以退出码 `-1` 终止，直接运行生成的 probe 可复现退出码 `139`，未生成可接受的静态单程序候选。当前静态 SDK 成功不能替代静态应用链接、无源码运行和发布包验收。
