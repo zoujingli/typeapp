@@ -86,7 +86,7 @@ Windows使用`run.cmd`。将`config/env.example`复制为`.env`并填入实际�
 
 三库均检查显式重复迁移、鉴权/CRUD、PATCH空值与缺失、版本冲突、白名单、SQL注入文本绑定、软删除和正常停止，并从真实后端读取行数确认驱动未回退。错误数据库密码要非零退出且不泄漏值；运行镜像从未写入测试密码或令牌，秘密只在测试进程环境中传递。
 
-macOS物联中心标准项目搬迁到含空格路径后，帮助、完整审计、SQLite迁移、双端授权、设备/数据验证、停止及篡改拒绝已通过。测试策略阻断开发源码、Composer、SDK、Homebrew和编译器，并用实际读取/执行负向探针确认限制；这是本机受限运行视图，不冒称另一台机器已安装验证。
+macOS物联中心标准项目搬迁到含空格路径后，帮助、完整审计、SQLite迁移、Platform/System/Center 授权、设备/数据验证、停止及篡改拒绝已通过。测试策略阻断开发源码、Composer、SDK、Homebrew和编译器，并用实际读取/执行负向探针确认限制；这是本机受限运行视图，不冒称另一台机器已安装验证。
 
 入口为tests/native-package.php及tests/package-resources.php。发布回归也接受独立模板的配置与产物，`composer test:onboarding-native` 将它连接到空目录创建、业务修改、完整编译及开发/生产对照，详细范围见[接入验收](developer-cli.md#空目录到原生发布的重复验收)。
 

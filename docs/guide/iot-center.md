@@ -332,13 +332,13 @@ sequenceDiagram
 
 | 入口 | 用途及条件 |
 | --- | --- |
-| `serve` | 双端页面与 HTTP API，先完成全新安装 |
+| `serve` | Platform、System 与 Center 页面及 HTTP API，先完成全新安装 |
 | `center:mqtt-install` | 显式安装协议存储，并取得同步提交证明 |
 | `center:mqtt` | 设备和接入应用的 TLS Broker；需要 PostgreSQL 同步后端、证书及唯一节点身份 |
 | `center:mqtt-statistics`、`center:mqtt-nodes` | 有界读取持久配额和节点观察；未知不能当作零 |
 | `center:mqtt-fence`、`center:mqtt-fence-result` | 登记并核对精确旧运行代次的硬隔离依据；命令不执行基础设施隔离 |
 | `app:schedule once/history/work` | 审计维护调度及执行历史，运行计划需要持久 Redis |
-| `app:audit-clean` | 双端审计的有界清理，按 `help` 指定域及批次 |
+| `app:audit-clean` | Platform/System 审计的有界清理，按 `help` 指定域及批次 |
 | `center:wal`、`center:backup`、`center:recovery` | WAL、备份保留及恢复授权核对，见[恢复说明](../development/iot-recovery.md) |
 
 具体配置统一在 `.env.example` 和 `config/app.php`。持久角色的 `IOT_MQTT_COMMAND` 必须指向同一个程序；内部 worker 不作为对外业务入口。未知或退役命令非零退出，旧 API 返回拒绝，不回退成首页。

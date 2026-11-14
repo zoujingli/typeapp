@@ -110,7 +110,7 @@ Swoole 在可让出的数据库等待期间调度其他协程；ORM 负责把连
 
 当前 `main` 支持通过 `#[Schema]` 声明新模块表及有限结构变更，显式 `php vendor/bin/type schema:prepare <声明.php>` 冻结并审查三库 SQL，再追加到已有迁移列表。开发和 AOT 构建只核验快照；旧迁移不改写。此能力尚未包含 RC14，完整流程与各库存储、失败恢复差异见[Schema 声明与冻结迁移](https://github.com/zoujingli/typeapp/blob/main/docs/development/schema.md)。
 
-物联中心通过 `app:install` 初始化空库，同时建立身份、租户和权限数据，具体参数见[双端身份初始化](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-identity.md#初始化)。安装完成后，在本仓库根查询迁移状态：
+物联中心通过 `app:install` 初始化空库，同时建立身份、租户和权限数据，具体参数见[Platform/System 身份初始化](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-identity.md#初始化)。安装完成后，在本仓库根查询迁移状态：
 
 ```bash
 composer typeapp:migrate -- status

@@ -107,6 +107,6 @@ composer package
 
 ## 成品案例
 
-本仓库还附带物联中心，用来展示如何把 TypeApp 装配成完整业务。它不是框架本身，也不应改写成另一套产品。运行步骤、双端账号、设备与 MQTT 契约见[物联网中心](iot-center.md)。
+本仓库还附带物联中心，用来展示如何把 TypeApp 装配成完整业务。它不是框架本身，也不应改写成另一套产品。运行步骤、Platform/System 账号、设备与 MQTT 契约见[物联网中心](iot-center.md)。
 
 下一步：[完成一个真实应用练习](tutorial.md) · [查看组件](components.md) · [配置数据库](configuration.md)。

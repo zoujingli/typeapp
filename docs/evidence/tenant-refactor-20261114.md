@@ -28,7 +28,7 @@
 - `php tests/mqtt-consumer.php --connect-fields-only`：独立 MQTT 消费者的真实 TCP、TLS 1.2/1.3 CONNECT 字段和证书校验通过。
 - `php tests/mqtt-consumer.php --retained`：MQTT.js 5.15.0 互操作、TCP/TLS QoS 0 发布订阅、QoS/retained 场景通过。
 - `php tests/mqtt-mtls.php`：源运行 mTLS/WSS 证书链、CRL、吊销、轮换、SNI、TLS 1.2/1.3 和降级拒绝全部通过；报告明确 `native:false`。
-- 活动源码、前端、文档、CI 和验收入口扫描：未发现 `SaaS`、`saas_id`、`public/saas`、`/s/`、旧双账号安装变量、旧客户成员模型、旧 `iot:*` 恢复命令或未加模块前缀的 `broker_nodes` 表名。
+- 活动源码、前端、文档、CI 和验收入口扫描：未发现旧租户命名、旧入口、旧表名前缀、旧双账号安装变量、旧客户成员模型、旧 `iot:*` 恢复命令或未加模块前缀的 `broker_nodes` 表名。
 - `docs/build-config/type-app.json` JSON 解析通过；活动 GitHub 工作流 YAML 解析通过。
 - 当前工作区 `git diff --check` 通过；提交按功能拆分并保留中文背景、影响和验证说明。
 

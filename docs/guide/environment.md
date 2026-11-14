@@ -22,7 +22,7 @@
 
 每个生产程序在编译时固定一个数据库 profile，运行时不能切换。`sqlite` 使用本地文件；`mysql` 和 `pgsql` 连接外部数据库服务。配置中的 `DB_DRIVER` 与程序不一致时返回 `runtime_profile_database_mismatch` 并拒绝继续；关闭的可选能力返回 `feature_unavailable`。Redis 仅由启用的能力引入，服务由部署环境提供。
 
-当前物联中心三个 profile 声明 `web`、`mqtt`、`iot`、`scheduler`，维护调度仍需 Redis。双端管理、设备注册、应用密钥和逐设备授权支持三库；设备 MQTT 的可靠持久接入要求 PostgreSQL 同步后端，应选择 `pgsql`。`sqlite`、`mysql` 不提供同等持久 MQTT 或集群恢复能力。
+当前物联中心三个 profile 声明 `web`、`mqtt`、`iot`、`scheduler`，维护调度仍需 Redis。Platform、System 与 Center 管理、设备注册、应用密钥和逐设备授权支持三库；设备 MQTT 的可靠持久接入要求 PostgreSQL 同步后端，应选择 `pgsql`。`sqlite`、`mysql` 不提供同等持久 MQTT 或集群恢复能力。
 
 维护调度使用 `APP_SCHEDULER_REDIS_*`，命名空间在同一部署内保持稳定。它由显式 `app:schedule` 命令执行，不会随 HTTP 启动自动清理数据。物联中心未装配通用业务查询缓存；独立应用需要同时具备 `cache` 构建能力与实际调用者，见[数据库与缓存](configuration.md#数据库与缓存)。旧遥测、告警、通知、导出和设备模拟器已退出当前案例；公开 RC14 的原功能与证据保持不变。
 

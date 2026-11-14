@@ -45,6 +45,55 @@ flowchart LR
 
 命令与任务可以直接调用 Service，不必经过 HTTP Controller。模型的简洁声明在构建时转换为受管类型属性；TypePHP 编译同一模型和业务实现，Swoole 提供协程、线程及网络能力。模型配置不在每次请求重新扫描，活动模型和连接也不跨作用域共享。
 
+## 物联网中心三角色
+
+物联网中心在一个应用程序内按身份域装配三个工作区。Platform 负责平台级配置、Tenant 开通、公共菜单、全局设备资产和 MQTT 运维；System 负责当前 Tenant 的人员、角色、品牌和审计；Center 负责当前 Tenant 的设备及原始通信业务。System 与 Center 共用同一 Tenant 会话，Platform 会话独立，任何工作区都不能通过请求参数切换 Tenant。
+
+```mermaid
+flowchart LR
+  Browser[浏览器] --> Gateway[可信 Host / 路径解析]
+  Gateway --> Platform[Platform 工作区\n平台账号与平台 RBAC]
+  Gateway --> Tenant[Tenant 工作区\nSystem 会话]
+  Tenant --> System[System\n用户、角色、品牌、审计]
+  Tenant --> Center[Center\n分类、设备、应用、授权、转配]
+  Platform --> Directory[(platform_*\n全局目录与平台身份)]
+  System --> TenantData[(system_*\nTenant 人员与设置)]
+  Center --> TenantData
+  Platform --> Mqtt[(platform_mqtt_*\nMQTT 运维状态)]
+  Center --> Mqtt
+```
+
+主域名根入口先展示启用 Tenant 的可搜索选择，再提交账号和密码；子域名或 `/t/{tenant_id}/` 已经绑定 Tenant，只展示账号和密码。登录成功后，前端根据身份域装配对应路由，后端仍以会话中的可信上下文执行授权和模型范围过滤。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as 使用者
+  participant Web as Vben 登录页
+  participant API as 入口 API
+  participant Auth as 身份服务
+  participant Scope as Tenant 执行上下文
+  participant DB as Model / 数据库
+
+  User->>Web: 打开主域名、子域名或固定路径
+  Web->>API: 读取公开品牌与 Tenant 选择项
+  alt 主域名
+    User->>Web: 选择 Tenant 并输入账号密码
+    Web->>API: POST /t/{tenant_id}/system/auth/login
+  else 子域名或固定路径
+    User->>Web: 输入账号密码
+    Web->>API: POST /system/auth/login
+  end
+  API->>Auth: 校验入口、Tenant 状态和账号
+  Auth->>DB: 在可信 Tenant 范围读取 SystemUser
+  DB-->>Auth: 模型对象与权限并集
+  Auth->>Scope: 绑定 Tenant 与 System 会话
+  Scope-->>Web: 会话、菜单和公开工作区配置
+  Web-->>User: 进入 System / Center 工作区
+```
+
+业务表按责任域使用 `platform_*`、`system_*`、`center_*` 和 `platform_mqtt_*` 前缀；常规读写优先具体 Model 与 ModelQuery，只有迁移、复合主键、协议热路径和跨模型原子投影等受控基础设施才使用表查询。模型的字段注释同时服务 PHPDoc、IDE 和 MySQL 结构同步，反向同步默认预览并由显式写入发布源码。
+
 ## 精简装配与标准共用
 
 TypeApp 优先复用 PSR、Swoole 以及现有 `ExecutionScope`、`ManagedResource` 和配置约定。构建器依据应用声明、构造器类型与显式绑定生成直接调用代码，组件只在通信、存储、日志、队列等真实替换边界使用接口；不增加通用运行时容器、未知源码扫描、AOP 代理或万能基础类。应用按声明顺序启动资源、按逆序停止资源，启动失败回收已启动部分，停止先拒绝新工作再在有界期限内排空。

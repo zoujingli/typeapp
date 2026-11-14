@@ -26,7 +26,7 @@
 - [组件完整业务集成](integration.md)
 - [I/O 验证方法](io-thread-coroutine-baseline.md)
 - [设备预注册、生命周期与MQTT接入](iot-devices.md)
-- [双端身份与 RBAC](iot-identity.md)
+- [Platform/System 身份与 RBAC](iot-identity.md)
 - [物联网运行概览](iot-operations.md)
 - [产品分类资料](iot-products.md)
 - [物联网备份与恢复](iot-recovery.md)

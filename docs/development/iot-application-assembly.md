@@ -32,7 +32,7 @@ flowchart TD
 
 ## HTTP 输入与原有权限
 
-双端登录使用 `LoginInput`；公开站点信息使用零参数动作；站点更新使用 `SiteUpdateInput`；产品的查询、创建、修改和删除使用路径参数及产品 DTO。其他上传、流和既有 PSR 动作继续使用原接口。
+Platform 与 System 身份域登录使用 `LoginInput`，Center 共用当前 Tenant 的 System 会话；公开站点信息使用零参数动作；站点更新使用 `SiteUpdateInput`；产品的查询、创建、修改和删除使用路径参数及产品 DTO。其他上传、流和既有 PSR 动作继续使用原接口。
 
 生成动作负责有界读取、分源解析和 Schema 校验。`JsonBody` 仅保留业务已有的 JSON 媒体类型与空正文错误，不再次消费正文。额外字段明确拒绝；PATCH 的 `Data::has()` 保留“未提供”，显式 null 依照字段规则拒绝。产品的版本不能省略，省略名称或描述不清空原值。
 
