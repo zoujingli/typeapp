@@ -42,9 +42,9 @@ async function leave() {
         <template #message>正在模拟 {{ session.user?.name }}</template>
         <template #description><Space wrap><span>操作者：{{ session.identity?.actor_name }} · 客户：{{ session.tenant?.name }}</span><Button :loading="leaving" @click="leave">退出模拟</Button></Space></template>
       </Alert>
-      <Space v-if="route.path.startsWith('/platform/broker')" wrap class="m-4"><Button v-for="[path, name] in mqttSections" :key="path" :type="route.path === '/platform/broker' + path ? 'primary' : 'default'" @click="router.push('/platform/broker' + path)">{{ name }}</Button></Space>
+      <Space v-if="route.path.startsWith('/platform/broker')" wrap size="small" class="mx-4 mb-4 mt-2" aria-label="MQTT 管理导航"><Button v-for="[path, name] in mqttSections" :key="path" size="small" :type="route.path === '/platform/broker' + path ? 'primary' : 'default'" @click="router.push('/platform/broker' + path)">{{ name }}</Button></Space>
     </template>
-    <template #header-left-60><span class="px-3">{{ session.realm === 'platform' ? '平台管理' : session.tenant?.name }}</span></template>
+    <template #header-left-60><span class="px-3 text-sm font-medium text-foreground">{{ session.realm === 'platform' ? '平台管理' : session.tenant?.name }}</span></template>
     <template #global-search><GlobalSearch :key="searchKey" :history-key="searchKey" :menus="searchMenus" :enable-shortcut-key="preferences.shortcutKeys.enable && preferences.shortcutKeys.globalSearch" class="mr-1 sm:mr-4" /></template>
     <template #fullscreen><VbenFullScreen tooltip="全屏切换" aria-label="全屏切换" class="mr-1" /></template>
     <template v-if="preferences.widget.lockScreen" #header-right-175><VbenIconButton tooltip="锁定屏幕" aria-label="锁定屏幕" class="mr-1" @click="lockModal.open()"><LockKeyhole class="size-4" /></VbenIconButton></template>
