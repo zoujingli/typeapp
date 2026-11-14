@@ -4,13 +4,13 @@ import { displayDateTime } from '../../../display';
  * Broker 授权页：主体、受信 CA、客户端证书绑定、签名 CRL、平台吊销、换证预览与版本生效。
  * 握手 CA 文件不在本页更新；保存成功不等于集群生效。隐藏页停止轮询。
  */
-import type { FormInstance } from 'ant-design-vue';
 import type { VxeTableGridOptions } from '../../../adapter/vxe-table';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { useVbenVxeGrid } from '../../../adapter/vxe-table';
-import { Alert, Button, Card, Checkbox, Collapse, CollapsePanel, Form, FormItem, Input, InputNumber, InputPassword, Select, Switch, Space, Modal, Tabs, TabPane, Tag, message } from 'ant-design-vue';
+import { useVbenForm, z } from '../../../adapter/form';
+import { Alert, Button, Card, Checkbox, Collapse, CollapsePanel, Form, FormItem, Input, InputNumber, Select, Space, Modal, Tabs, TabPane, Tag, message } from 'ant-design-vue';
 import { ApiError, errorText, isCanceled, isDemo, request, session } from '../../../api/identity';
 
 interface Grant { topic: string; publish: boolean; subscribe: boolean; max_qos: number }
@@ -58,7 +58,6 @@ const open = ref(false); const saving = ref(false); const saveFailure = ref('');
 const editing = ref<Principal | null>(null);
 const historyOpen = ref(false); const historyBusy = ref(false); const historyFailure = ref('');
 const acting = ref('');
-const formRef = ref<FormInstance>();
 const form = ref({ name: '', login: '', password: '', enabled: true, rotate: false, certificatePem: '', overlapSeconds: 86400, revokeFingerprints: [] as string[], grants: [{ topic: '', publish: true, subscribe: true, max_qos: 2 }] as Grant[] });
 const preview = ref<RotationPreview | null>(null);
 const previewBusy = ref(false);
@@ -72,6 +71,13 @@ const crlInterval = ref(300);
 const crlCa = ref('');
 const platformSerial = ref('');
 let generation = 0; let pending: AbortController | null = null; let timer: ReturnType<typeof setInterval> | undefined;
+const [PrincipalForm, principalForm] = useVbenForm({ showDefaultActions: false, layout: 'vertical', commonConfig: { componentProps: { class: 'w-full' } }, wrapperClass: 'grid-cols-1 md:grid-cols-2', schema: [
+  { fieldName: 'name', label: '主体名称', component: 'Input', formItemClass: 'col-span-full', componentProps: { maxlength: 100 }, rules: z.string().trim().min(1, '请输入主体名称').max(100) },
+  { fieldName: 'login', label: '登录名', component: 'Input', formItemClass: 'col-span-full', componentProps: () => ({ disabled: Boolean(editing.value), autocomplete: 'username', maxlength: 100 }), rules: z.string().regex(/^[a-z0-9][a-z0-9_.@-]{2,99}$/, '请输入3至100位小写登录名') },
+  { fieldName: 'password', label: '接入密码', component: 'InputPassword', formItemClass: 'col-span-full', componentProps: { autocomplete: 'new-password', maxlength: 72 }, rules: z.string().max(72) },
+  { fieldName: 'rotate', label: '轮换凭据', component: 'Switch', componentProps: { class: 'w-auto' }, formItemClass: 'md:col-span-1' },
+  { fieldName: 'enabled', label: '启用主体', component: 'Switch', componentProps: { class: 'w-auto' }, formItemClass: 'md:col-span-1' },
+] });
 const statusNames: Record<string, string> = { pending: '待生效', partial: '部分生效', effective: '已生效', failed: '失败', rolled_back: '已回退' };
 const stageNames: Record<string, string> = { accepted: '已受理', executing: '执行中', completed: '已完成', failed: '失败', unknown: '未知' };
 const fetchNames: Record<string, string> = { idle: '未获取', success: '成功', failed: '失败' };
@@ -159,12 +165,13 @@ async function loadRevisions(page = 1, background = false) {
 }
 function search(reset = false) { if (busy.value) return; if (reset) filters.value.name = ''; applied = filters.value.name.trim(); void load(1); }
 /** 打开编辑抽屉；已有证书可勾选吊销，新增只提交公钥 PEM。 */
-function edit(item: Principal | null) {
+async function edit(item: Principal | null) {
   if (!canWrite.value) return;
   editing.value = item; saveFailure.value = ''; preview.value = null; previewFailure.value = '';
   Object.assign(form.value, { name: item?.name || '', login: item?.login || '', password: '', enabled: item?.enabled ?? true, rotate: false,
     certificatePem: '', overlapSeconds: 86400, revokeFingerprints: [],
     grants: item?.grants.length ? item.grants.map(grant => ({ ...grant })) : [{ topic: '', publish: true, subscribe: true, max_qos: 2 }] });
+  await principalForm.setValues({ name: form.value.name, login: form.value.login, password: '', enabled: form.value.enabled, rotate: false });
   open.value = true;
 }
 function addGrant() { if (form.value.grants.length < 32) form.value.grants.push({ topic: '', publish: true, subscribe: true, max_qos: 2 }); }
@@ -193,7 +200,9 @@ async function previewRotation() {
 /** 写入主体、授权与证书绑定；409 时重新读取当前版本。 */
 async function save() {
   if (saving.value || !canWrite.value) return;
-  try { await formRef.value?.validate(); } catch { return; }
+  if (!(await principalForm.validate()).valid) return;
+  const values = await principalForm.getValues();
+  if ((!editing.value || values.rotate) && String(values.password || '').length < 12) { saveFailure.value = '密码至少 12 字节'; return; }
   const grants = form.value.grants.filter(grant => grant.topic.trim() !== '');
   const certificates = [
     ...form.value.revokeFingerprints.map(fingerprint => ({ fingerprint, revoke: 1 })),
@@ -203,7 +212,7 @@ async function save() {
   try {
     await request(`${base.value}/access/principals${editing.value ? `/${editing.value.id}` : ''}`, {
       tenant: tenant.value, method: 'POST',
-      data: { name: form.value.name, login: form.value.login, password: form.value.password, enabled: form.value.enabled ? 1 : 0, rotate: form.value.rotate ? 1 : 0, revoke: 0,
+      data: { name: values.name, login: values.login, password: values.password, enabled: values.enabled ? 1 : 0, rotate: values.rotate ? 1 : 0, revoke: 0,
         expected_version: result.value.current_version,
         grants: grants.map(grant => ({ topic: grant.topic, publish: grant.publish ? 1 : 0, subscribe: grant.subscribe ? 1 : 0, max_qos: grant.max_qos })),
         ...(certificates.length ? { certificates } : {}) },
@@ -311,7 +320,7 @@ function runMqttAction(action: MqttAction) {
   if (action.confirmTitle) Modal.confirm({ title: action.confirmTitle, content: action.confirmContent, onOk: action.onClick });
   else void action.onClick();
 }
-const [MqttDrawer1, mqttDrawer1] = useVbenDrawer({ onConfirm: save, onBeforeClose: () => !saving.value, onOpenChange(value) { open.value = value; } });
+const [MqttDrawer1, mqttDrawer1] = useVbenDrawer({ onConfirm: save, onBeforeClose: () => !saving.value, onOpenChange(value) { open.value = value; }, onClosed() { void principalForm.resetForm(); } });
 watch(open, value => { if (value) mqttDrawer1.open(); else mqttDrawer1.close(); });
 const [MqttDrawer2, mqttDrawer2] = useVbenDrawer({ onBeforeClose: () => !acting.value, onOpenChange(value) { historyOpen.value = value; } });
 watch(historyOpen, value => { if (value) mqttDrawer2.open(); else mqttDrawer2.close(); });
@@ -372,12 +381,8 @@ watch(historyOpen, value => { if (value) mqttDrawer2.open(); else mqttDrawer2.cl
     <MqttDrawer1 :title="editing ? '发布授权新版本' : '新增接入主体'" :confirm-loading="saving" :closable="!saving" class="w-full max-w-3xl" :show-confirm-button="canWrite">
       <Alert v-if="saveFailure" :message="saveFailure" type="error" show-icon class="mb-4" role="alert" />
       <p class="text-muted-foreground leading-7">保存成功只表示本版本已写入。收紧权限后新认证立即按新事实拒绝，健康节点约 5 秒内停止旧连接收发并断开；部分失败会暂停后续发布。正常换证可设 0–24 小时重叠，吊销、停用和收权无宽限。客户端证书须由已登记 CA 签发，只提交公钥 PEM。</p>
-      <Form ref="formRef" :model="form" layout="vertical" class="grid grid-cols-1 gap-x-5 md:grid-cols-2" :disabled="saving">
-        <FormItem label="主体名称" name="name" :rules="[{ required: true, whitespace: true, message: '请输入主体名称' }]" class="col-span-full"><Input v-model:value="form.name" :maxlength="100" /></FormItem>
-        <FormItem v-if="!editing || form.login" label="登录名" name="login" :rules="editing ? [] : [{ required: true, whitespace: true, message: '请输入登录名' }]" class="col-span-full"><Input v-model:value="form.login" :disabled="Boolean(editing)" :maxlength="100" /></FormItem>
-        <FormItem v-if="!editing || form.rotate" label="接入密码" name="password" :rules="[{ required: !editing || form.rotate, min: 12, message: '密码至少 12 字节' }]" class="col-span-full"><InputPassword v-model:value="form.password" :maxlength="72" /></FormItem>
-        <FormItem v-if="editing" label="轮换凭据"><Checkbox v-model:checked="form.rotate" aria-label="轮换凭据">递增凭据代次并断开旧连接</Checkbox></FormItem>
-        <FormItem label="启用主体"><Switch v-model:checked="form.enabled" aria-label="启用主体" /></FormItem>
+      <PrincipalForm :common-config="{ disabled: saving, componentProps: { class: 'w-full' } }" />
+      <Form layout="vertical" class="grid grid-cols-1 gap-x-5 md:grid-cols-2" :disabled="saving">
         <div v-if="editing" class="col-span-full grant-list">
           <div class="mb-4 flex flex-wrap items-center justify-between gap-4"><span>已绑定证书</span></div>
           <div v-for="item in (editing.certificates || []).filter(row => row.status === 'active')" :key="item.id" class="grant-row cert-row">
