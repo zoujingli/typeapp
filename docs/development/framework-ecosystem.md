@@ -74,7 +74,7 @@ flowchart TB
 
 ### 类型化 HTTP 动作
 
-以下签名已进入开发源码，仍需完成同一候选的原生验收，不应复制到 RC14 使用：
+以下签名是独立应用可选的开发源码能力，仍需完成同一候选的原生验收；当前物联应用继续使用 Controller 内的 `Input`、`_vali()` 和字段白名单，不依赖该入口：
 
 ```php
 public function update(int $id, UpdateUserInput $input): array

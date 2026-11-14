@@ -123,7 +123,7 @@ sequenceDiagram
 
 ## 已校验输入
 
-本节属于开发版能力，尚未包含在 RC14。应用将 `type-validate` 安装为生产依赖，把输入类纳入生产源码；动作最多接收一个 `ValidatedInput`。构建器核对签名，运行时直接调用规则与工厂，不使用反射。
+本节属于开发版的可选框架能力，尚未包含在 RC14。独立应用可以将 `type-validate` 安装为生产依赖并让动作接收一个 `ValidatedInput`；当前物联应用不依赖该入口，仍在 Controller 直接使用 `Input`、`_vali()` 和字段白名单。构建器核对签名，运行时直接调用规则与工厂，不使用反射。
 
 把以下文件保存为 `app/input/BookInput.php`。保留 `Data` 可以区分 PATCH 中没有提供字段和明确传入 null：
 
