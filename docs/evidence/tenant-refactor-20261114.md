@@ -146,3 +146,12 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 - 使用同一 AOT 程序、隔离外部 PHP 扩展扫描目录后执行 `tests/tenant.php sqlite` 通过；外部扩展重复加载警告没有计入程序 JSON 响应，临时执行包装器已清理。
 - 在锁定 PHP 8.5.12 ZTS、原生 Swoole profile、绝对 PATH 和 `PHP_INI_SCAN_DIR=/dev/null` 下重跑完整 PHPUnit：309 tests、18,031 assertions 全部通过；此前系统 PHP 或子进程未使用锁定 PATH 的失败仅属于运行库环境污染。
 - 本轮临时 PostgreSQL 主库、同步备库、HTTP、Broker 和探针进程均已停止，工作区没有遗留运行进程。
+
+## 当前输入基线的最终 macOS ARM64 SQLite 静态复验
+
+在当前输入边界收敛后的源码上，使用锁定 PHP 8.5.12 ZTS、PHPX 2.9.8、Swoole 6.3.0RC1 和 macOS ARM64 SQLite 静态 SDK 重新构建：
+
+- TypePHP AOT 编译链接 298 个 C++ 文件通过；最终程序 `build/app/type-app` 的 build id 为 `64ef722ec1fc060b7925c9959df4f2982efb2fe8b3137607743db9b03e6b058a`，SHA-256 为 `7593f21c082741de49ca534d0f47dc1b0108d0dad3e8ee7fee09f5f8caced200`。
+- 使用同一静态程序执行 `tests/tenant.php sqlite` 通过，覆盖空库安装、模块表前缀、主域/固定路径入口、RBAC、品牌、模拟交接、MQTT 模拟观测、恢复核对及真实 HTTP Tenant 隔离。
+- 使用同一静态程序执行 `tests/native-single-program.php build/app/type-app` 通过，覆盖单程序导出与覆盖保护、只读程序目录、不同工作目录、外部 PHP 配置忽略、内嵌许可材料、平台用户/角色 CRUD、HTTP 页面和优雅停止。
+- 首次以 `PHP_INI_SCAN_DIR=/dev/null` 启动 Tenant 夹具时，动态观测夹具按预期拒绝“协程 I/O 需要原生 Swoole”；随后注入锁定 runtime profile 的原生 Swoole 扩展目录重跑通过。该前置配置拒绝不计为业务或 SQLite 兼容性失败。
