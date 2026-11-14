@@ -199,7 +199,7 @@ watch(historyOpen, value => { if (value) mqttDrawer1.open(); else mqttDrawer1.cl
 </script>
 
 <template>
-  <Page title="MQTT 运行配置" :description="pageDescription" header-class="flex-wrap gap-4">
+  <Page auto-content-height title="MQTT 运行配置" :description="pageDescription" header-class="flex-wrap gap-4">
     <template #extra><Button :disabled="!canRead" @click="showHistory">版本生效</Button></template>
     <Alert v-if="failure" class="mb-4" type="error" show-icon role="alert" :message="denied ? failure : `运行配置刷新失败：${failure}`" />
     <Alert v-if="!canRead" class="mb-4" type="warning" show-icon message="当前账号无权查看 Broker 运行配置" />

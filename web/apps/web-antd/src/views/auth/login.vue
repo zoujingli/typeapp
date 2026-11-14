@@ -11,7 +11,7 @@ const route = useRoute();
 const router = useRouter();
 const realm = computed<Realm>(() => route.path.startsWith('/platform') ? 'platform' : 'system');
 const form = ref<InstanceType<typeof AuthenticationLogin>>();
-const busy = ref(false); const configuring = ref(false); const failure = ref('');
+const busy = ref(false); const configuring = ref(false); const contextReady = ref(false); const failure = ref('');
 const choices = ref<Tenant[]>([]); const total = ref(0); const page = ref(1); const search = ref(''); const searching = ref(false);
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let listController: AbortController | undefined;
@@ -41,10 +41,10 @@ async function customerChanged(id?: string) {
   cancelContext();
   await form.value?.getFormApi().resetForm();
   form.value?.getFormApi().setValues({ tenant_id: id, username: '', password: '' });
-  failure.value = ''; configuring.value = true;
+  failure.value = ''; contextReady.value = false; configuring.value = true;
   const tenant = choices.value.find(item => item.id === id) || null;
   selectTenant(tenant);
-  try { await loadSiteSettings(tenant, 'system'); }
+  try { await loadSiteSettings(tenant, 'system'); contextReady.value = true; }
   catch (error) { if (!isCanceled(error)) failure.value = errorText(error); }
   finally { if (session.tenant?.id === id || !id) configuring.value = false; }
 }
@@ -57,7 +57,7 @@ const schema = computed<VbenFormSchema[]>(() => [
   { fieldName: 'password', label: '密码', component: 'VbenInputPassword', componentProps: { placeholder: '密码', autocomplete: 'current-password', maxlength: 72, disabled: busy.value }, rules: z.string().min(1, '请输入密码') },
 ]);
 async function submit(values: Record<string, unknown>) {
-  if (busy.value || configuring.value) return;
+  if (busy.value || configuring.value || !contextReady.value) return;
   busy.value = true; failure.value = '';
   try {
     await login(String(values.username).trim(), String(values.password), realm.value);
@@ -67,9 +67,10 @@ async function submit(values: Record<string, unknown>) {
   finally { busy.value = false; }
 }
 watch(realm, async () => {
-  failure.value = ''; configuring.value = true;
+  failure.value = ''; contextReady.value = false; configuring.value = true;
   try {
     await loadSiteSettings(undefined, realm.value);
+    contextReady.value = true;
     await nextTick(); await form.value?.getFormApi().resetForm();
     if (choose.value) await fetchTenants();
   } catch (error) { if (!isCanceled(error)) failure.value = errorText(error); }
@@ -80,7 +81,7 @@ onBeforeUnmount(() => { clearTimeout(searchTimer); listController?.abort(); form
 <template>
   <div>
     <Alert v-if="failure || session.notice" :message="failure || session.notice" type="error" show-icon class="mb-4" role="alert" />
-    <AuthenticationLogin ref="form" :form-schema="schema" :loading="busy || configuring" :title="realm === 'platform' ? '平台登录' : '系统登录'" :sub-title="realm === 'platform' ? '使用平台账号登录' : choose ? '选择客户后登录系统' : '使用当前系统账号登录'" :show-code-login="false" :show-qrcode-login="false" :show-forget-password="false" :show-register="false" :show-third-party-login="false" :show-remember-me="false" @submit="submit" />
+    <AuthenticationLogin ref="form" :form-schema="schema" :loading="busy || configuring" :submit-disabled="!contextReady" :title="realm === 'platform' ? '平台登录' : '系统登录'" :sub-title="realm === 'platform' ? '使用平台账号登录' : choose ? '选择客户后登录系统' : '使用当前系统账号登录'" :show-code-login="false" :show-qrcode-login="false" :show-forget-password="false" :show-register="false" :show-third-party-login="false" :show-remember-me="false" @submit="submit" />
     <div v-if="!entryContext.bound" class="mt-5 text-center"><RouterLink :to="realm === 'platform' ? '/system/login' : '/platform/login'">{{ realm === 'platform' ? '返回系统登录' : '平台管理登录' }}</RouterLink></div>
   </div>
 </template>

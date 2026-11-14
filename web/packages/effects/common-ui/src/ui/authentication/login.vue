@@ -37,6 +37,7 @@ const props = withDefaults(defineProps<Props>(), {
   showRegister: true,
   showRememberMe: true,
   showThirdPartyLogin: true,
+  submitDisabled: false,
   submitButtonText: '',
   subTitle: '',
   title: '',
@@ -65,6 +66,7 @@ const localUsername = localStorage.getItem(REMEMBER_ME_KEY) || '';
 const rememberMe = ref(!!localUsername);
 
 async function handleSubmit() {
+  if (props.submitDisabled || props.loading) return;
   const { valid } = await formApi.validate();
   const values = await formApi.getValues();
   if (valid) {
@@ -136,6 +138,7 @@ defineExpose({
         'cursor-wait': loading,
       }"
       :loading="loading"
+      :disabled="submitDisabled"
       aria-label="login"
       class="w-full"
       @click="handleSubmit"

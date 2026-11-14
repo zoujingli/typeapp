@@ -14,6 +14,11 @@ interface AuthenticationProps {
   loading?: boolean;
 
   /**
+   * @zh_CN 是否禁用提交按钮
+   */
+  submitDisabled?: boolean;
+
+  /**
    * @zh_CN 二维码登录路径
    */
   qrCodeLoginPath?: string;

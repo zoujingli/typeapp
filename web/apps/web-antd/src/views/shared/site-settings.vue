@@ -2,7 +2,7 @@
 import type { SiteSettingsView } from '../../api/contracts';
 import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { Alert, Button, Card, Space, Spin, message } from 'ant-design-vue';
+import { Alert, Button, Card, Empty, Space, Spin, message } from 'ant-design-vue';
 import { Page } from '@vben/common-ui';
 import { useVbenForm, z } from '../../adapter/form';
 import { ApiError, errorText, isCanceled, isDemo, request, session, siteSettings } from '../../api/identity';
@@ -78,6 +78,6 @@ onMounted(load);
   <Page :title="title" header-class="flex-wrap gap-4" :description="defaults ? '主域名公共登录页及新客户的初始配置；已开通客户独立维护自己的设置。' : '维护当前端品牌与默认界面，个人显式覆盖继续生效。'">
     <template #extra><Space><Button :loading="loading" :disabled="saving" @click="load">刷新</Button><Button v-if="canManage" type="primary" :loading="saving" :disabled="loading || !view || conflicted" @click="save">保存设置</Button></Space></template>
     <Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon />
-    <Spin :spinning="loading"><Card :bordered="false"><Form :common-config="{ disabled: !canManage || loading || saving || !view, componentProps: { class: 'w-full' } }" /></Card></Spin>
+    <Spin :spinning="loading"><Card :bordered="false"><Form v-if="view" :common-config="{ disabled: !canManage || loading || saving, componentProps: { class: 'w-full' } }" /><Empty v-else-if="!loading" description="暂无可读取的站点配置"><Button @click="load">重新读取</Button></Empty></Card></Spin>
   </Page>
 </template>

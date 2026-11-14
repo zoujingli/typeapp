@@ -2,7 +2,7 @@
 import type { ConfigurationField, ConfigurationView } from '../../api/platform';
 import type { VbenFormSchema } from '../../adapter/form';
 import { computed, onMounted, ref } from 'vue';
-import { Alert, Button, Card, Space, Spin, message } from 'ant-design-vue';
+import { Alert, Button, Card, Empty, Space, Spin, message } from 'ant-design-vue';
 import { Page } from '@vben/common-ui';
 import { useVbenForm } from '../../adapter/form';
 import { ApiError, applyAccessContext, errorText, isCanceled, isDemo, request, session } from '../../api/identity';
@@ -50,6 +50,6 @@ onMounted(load);
   <Page title="运行配置" description="查看配置来源并维护非敏感启动参数。" header-class="flex-wrap gap-4">
     <template #extra><Space><Button :loading="loading" :disabled="saving" @click="load">刷新</Button><Button v-if="canManage" type="primary" :loading="saving" :disabled="!view || loading || conflicted" @click="save">保存配置</Button></Space></template>
     <Alert v-if="pendingRestart || view?.restart_required" type="warning" class="mb-4" message="配置已写入，重启后生效；当前进程不会热加载。" show-icon /><Alert v-if="failure" :message="failure" type="error" class="mb-4" show-icon />
-    <Spin :spinning="loading"><Card :bordered="false"><Form :common-config="{ disabled: loading || saving, componentProps: { class: 'w-full' } }" /></Card></Spin><Alert v-if="view?.undeclared.length" type="info" class="mt-4" message="以下配置键未纳入网页管理，不会读取或修改其值" :description="view.undeclared.join('、')" show-icon />
+    <Spin :spinning="loading"><Card :bordered="false"><Form v-if="view" :common-config="{ disabled: loading || saving, componentProps: { class: 'w-full' } }" /><Empty v-else-if="!loading" description="暂无可读取的运行配置"><Button @click="load">重新读取</Button></Empty></Card></Spin><Alert v-if="view?.undeclared.length" type="info" class="mt-4" message="以下配置键未纳入网页管理，不会读取或修改其值" :description="view.undeclared.join('、')" show-icon />
   </Page>
 </template>

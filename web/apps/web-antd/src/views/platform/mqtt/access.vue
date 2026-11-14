@@ -328,7 +328,7 @@ watch(historyOpen, value => { if (value) mqttDrawer2.open(); else mqttDrawer2.cl
 </script>
 
 <template>
-  <Page title="MQTT 授权" :description="`平台接入主体、受信 CA 与 Topic 授权 · 当前版本 v${result.current_version}${paused ? ' · 已暂停后续发布' : ''}`" header-class="flex-wrap gap-4">
+  <Page auto-content-height title="MQTT 授权" :description="`平台接入主体、受信 CA 与 Topic 授权 · 当前版本 v${result.current_version}${paused ? ' · 已暂停后续发布' : ''}`" header-class="flex-wrap gap-4">
     <template #extra><Space wrap><Button :disabled="!canRead" @click="showHistory">版本生效</Button><Button v-if="canWrite" type="primary" @click="edit(null)" :disabled="isDemo()">新增主体</Button></Space></template>
     <Alert v-if="failure" class="mb-4" type="error" show-icon role="alert" :message="denied ? failure : `授权刷新失败：${failure}`" />
     <Alert v-if="!canRead" class="mb-4" type="warning" show-icon message="当前账号无权查看 Broker 授权" />

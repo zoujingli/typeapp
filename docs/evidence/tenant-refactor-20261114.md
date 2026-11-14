@@ -185,3 +185,10 @@ MQTT 授权主体的固定字段（主体名称、登录名、接入密码、轮
 - 前端 Vitest：2 个文件、3 个测试全部通过。
 - `git diff --check`：通过。
 - 本轮只验证页面静态构建与异步状态实现，未扩大为所有业务页面逐项 CRUD、正式平台矩阵或真实 DNS/TLS 部署验收。
+
+## 登录配置失败阻断与配置空态追加
+
+主域客户选择和平台登录现在只有在公开站点配置成功读取后才允许提交；配置请求失败会保留错误提示并禁用登录按钮，避免使用旧配置或本地默认值提交到错误入口。运行配置和站点设置在读取失败或尚未取得数据时使用 Vben/Ant Design `Empty` 与“重新读取”，不再渲染空表单。
+
+- `build/app/type-app` 单程序复验通过，证据为 `build/single program-851b97e98587/verification.json`；平台为 macOS ARM64、SQLite，产物 SHA-256 为 `9037f2ed2eee04d32d317978a88078f12ae7dc5b97350e3d6e0c829c8f037d99`，build id 为 `50eb5ab6b13c01075a88afbedae9c8b7f1707614cdc8f44dff33430a80df0560`。
+- 当前改动已通过 `pnpm@12.18.0 typecheck` 与 `git diff --check`；静态 AOT 前端改动不改变后端二进制，但尚未重新生成新的静态程序。
