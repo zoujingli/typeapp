@@ -252,3 +252,12 @@ MQTT 授权主体的固定字段（主体名称、登录名、接入密码、轮
 - 当前 PostgreSQL 静态程序：`build/current-aot-pgsql/type-app`，build id `9a48218e53fda8030481a62f7daec1faa95c9c51d919a41922a88e02ff30a580`，SHA-256 `4b25eb469cd6557ff9e86440107d74df67efaa60831b9d6f4230d9340b1736be`。
 
 同一修复还通过完整 PHPUnit（309 tests / 18,031 assertions）、公共检查、文档一致性检查、前端 typecheck 和定向 Vitest；Windows/Linux 当前源码矩阵、真实 DNS/TLS 部署和完整设备生产链路仍按未验证处理。
+
+## Vben 通知工具插槽补齐
+
+真实浏览器复核发现，Vben 偏好默认开启通知工具时，应用布局没有向 `BasicLayout` 提供 `notification` 插槽，顶部会留下空位置。当前布局接入 Vben 原生 `Notification` 组件，空列表显示官方空态，不伪造业务通知；后续接入真实通知源时可直接替换列表和事件处理。
+
+- `pnpm --dir web typecheck`：通过。
+- `pnpm --dir web build`：通过，Vite 8.3.8 转换 7,877 modules；仅保留既有大 chunk 警告。
+- 真实 Chromium 使用当前 `web/dist` 与 SQLite AOT API 完成平台登录，工作台顶部显示通知按钮；点击后打开 Vben 通知弹层并显示“暂无数据”，同时核对搜索、偏好、主题、语言、时区、全屏、刷新、锁屏和用户入口。
+- 临时 SQLite 服务、Vite 服务、浏览器会话和测试目录已回收；该项不扩大为真实通知数据源或跨平台部署验证。

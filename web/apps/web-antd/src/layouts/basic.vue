@@ -2,7 +2,7 @@
 import { computed, ref, watch, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { Menu } from '../api/contracts';
-import { BasicLayout, GlobalSearch, LockScreen, LockScreenModal, UserDropdown } from '@vben/layouts';
+import { BasicLayout, GlobalSearch, LockScreen, LockScreenModal, Notification, UserDropdown } from '@vben/layouts';
 import { useVbenModal, VbenFullScreen, VbenIconButton } from '@vben/common-ui';
 import { LockKeyhole } from '@vben/icons';
 import { preferences } from '@vben/preferences';
@@ -52,6 +52,7 @@ async function leave() {
     <template #header-left-60><span class="px-3 text-sm font-medium text-foreground">{{ session.realm === 'platform' ? '平台管理' : session.tenant?.name }}</span></template>
     <template #global-search><GlobalSearch :key="searchKey" :history-key="searchKey" :menus="searchMenus" :enable-shortcut-key="preferences.shortcutKeys.enable && preferences.shortcutKeys.globalSearch" class="mr-1 sm:mr-4" /></template>
     <template #fullscreen><VbenFullScreen tooltip="全屏切换" aria-label="全屏切换" class="mr-1" /></template>
+    <template #notification><Notification :notifications="[]" /></template>
     <template v-if="preferences.widget.lockScreen" #header-right-175><VbenIconButton tooltip="锁定屏幕" aria-label="锁定屏幕" class="mr-1" @click="lockModal.open()"><LockKeyhole class="size-4" /></VbenIconButton></template>
     <template #user-dropdown><UserDropdown :text="session.user?.name" :description="session.user?.login" :menus="userMenus" :lock-screen="lock" @logout="leave" @clear-preferences-and-logout="leave" /></template>
     <template #lock-screen><LockScreen :verify-password="verifyScreenPassword" :timezone="preferences.app.timezone" @to-login="leave" /></template>
