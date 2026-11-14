@@ -131,4 +131,10 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 随后在同一全新安装中批量访问当前前端注册的业务路由：Platform 20 条、System/Center 11 条。每条路由均返回对应的页面标题，未出现“页面不存在”、服务错误或网络错误提示；覆盖客户、平台用户/角色/菜单、运行概览、全部 MQTT 运维页、平台设置、System 用户/角色/设置/审计以及 Center 全部列表页。该批次证明路由装配、权限读取、列表首屏和标题同步，仍不替代逐页面的创建、编辑、删除、授权、主题操作和子域名浏览器交互验收。
 
 在同一类真实浏览器安装上进一步执行 Center“产品分类”完整 CRUD：通过 Vben 创建弹层提交分类后列表出现；编辑弹层提交后名称和说明更新；删除操作经过二次确认后列表恢复为空。该结果只覆盖产品分类这一业务页面，其他页面的 CRUD、授权弹层、一次性秘密展示及子域名浏览器交互仍按未验证处理。
+
+## 当前工作区定向复核
+
+- 锁定 PHP 8.5.12 ZTS、原生 Swoole runtime profile 下 `php tests/app-models.php` 通过，确认身份与 Tenant Model 的无连接 CRUD、`search()` 和可信上下文隔离。
+- `vendor/bin/phpunit --filter 'ModelFirstBoundaryTest|ModelSchemaSynchronizerTest|ProjectStructureTest'` 通过：15 tests、633 assertions。
+- 未注入 Swoole 的系统 PHP 执行 `tests/app-models.php` 按预期返回“协程 I/O 需要原生 Swoole”，该结果记录为环境前置拒绝，不计为业务失败。
 - 本轮临时 PostgreSQL 主库、同步备库、HTTP、Broker 和探针进程均已停止，工作区没有遗留运行进程。
