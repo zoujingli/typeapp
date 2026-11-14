@@ -60,6 +60,8 @@ cp .env.example .env
 | `APP_LISTEN` / `APP_PORT` | 监听地址与端口，默认 `127.0.0.1:9501` |
 | `APP_ALLOWED_HOSTS` | 接受的 Host，列表以逗号分隔 |
 | `APP_TRUSTED_PROXIES` | 明确信任的代理，默认不信任代理 |
+| `TENANT_BASE_DOMAIN` | Tenant 子域名共享后缀，例如 `tenant.example.com`；为空时不启用登记子域名入口。Host 仍须同时登记在 `APP_ALLOWED_HOSTS` 或由可信代理规范化 |
+| `APP_PUBLIC_ORIGIN` | 主域客户选择登录和模拟登录交接使用的公开 Origin，例如 `https://tenant.example.com`；必须与实际入口协议、主机和端口一致，不承载秘密 |
 | `APP_HTTP_THREADS` | HTTP 执行线程数，默认 2；不得超过部署计划的每进程线程上限；Windows 当前为单执行者 |
 | `APP_HTTP_MAX_REQUESTS` / `APP_HTTP_MAX_CONNECTIONS` | 每个 HTTP 执行者的请求/连接上限，默认 64 / 256 |
 | `APP_HTTP_REQUEST_MS` / `APP_HTTP_DRAIN_MS` / `APP_HTTP_CLEANUP_MS` | 请求、停止排空和清理预算，默认 30000 / 5000 / 1000 毫秒 |

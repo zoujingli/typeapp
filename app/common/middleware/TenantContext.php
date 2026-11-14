@@ -47,8 +47,10 @@ final class TenantContext implements MiddlewareInterface
     /** RequestPolicy 在规范化代理与 Host 后调用；仅接受登记的一级客户子域名。 */
     public static function allowsAuthority(string $authority, string $baseDomain): bool
     {
-        $host = (string)parse_url('http://' . $authority, PHP_URL_HOST);
-        $label = self::label($host, $baseDomain);
+        // RequestPolicy 已将 authority 规范为小写，但配置来源仍可能保留 Host 的大小写。
+        // DNS/Host 名称大小写不敏感，可信入口判断必须与运行时 TenantContext 使用同一规则。
+        $host = strtolower((string)parse_url('http://' . $authority, PHP_URL_HOST));
+        $label = self::label($host, strtolower($baseDomain));
         return $label !== '' && Tenant::query()->master()->where('subdomain', '=', $label)->exists();
     }
 
