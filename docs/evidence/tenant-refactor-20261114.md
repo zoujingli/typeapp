@@ -63,3 +63,13 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 - 同一锁定环境的 `tests/model-sync.php`：真实 MySQL 结构反向同步、注释、生成列、字段保护和 Tenant CRUD 通过。
 
 本追加记录仍不扩大“未验证及阻塞”中列出的静态单程序、无源码部署、正式平台矩阵和真实设备持久 MQTT 边界。
+
+## 当前列表与 Web 精修追加验证
+
+本次追加提交为 `bfbac97`、`6e83493` 和 `5390371`，分别收口普通业务列表的 Model-first 查询入口、精修 Vben 工作区导航和同步模型/页面边界文档。
+
+- 身份目录、注册资格、接入应用、通信授权明细和设备转配列表统一使用具体 Model 与 `_query()` 白名单助手完成筛选、排序和有界分页；跨表设备运行观察、审计、恢复和 MQTT 协议原子操作继续按已登记例外执行。
+- Platform、System、Center 路由补齐服务端登记一致的目录与页面图标、顺序和详情选中路径；MQTT 次级导航使用标准 Ant Design Vue 小尺寸间距和可访问标签，认证后仍由服务端菜单覆盖静态元数据。
+- 原生 PHP 8.5.12 ZTS + Swoole 6.3.0RC1：完整 PHPUnit `309 tests / 18029 assertions`、`tests/app-models.php`、`tests/tenant.php sqlite` 通过；Model-first、ProjectStructure 与模型同步筛选共 `15 tests / 631 assertions` 通过。
+- `composer cs-check` 通过（922 个文件，0 个待修正）；`composer test:docs` 通过（1504 处引用、131 条路由、292 个命令、247 个 Composer 脚本）；`pnpm typecheck` 与 `pnpm build` 通过（Vite 8.3.8，7875 个模块），仅保留已有大 chunk 警告。
+- 本轮仍未重新执行静态单程序、删除源码运行、正式平台/profile 矩阵、真实 MySQL/PostgreSQL 服务、真实 TLS MQTT 设备会话和跨 Tenant 转配；既有记录中的对应证据和限制继续有效，不能由本轮 SQLite 与源运行检查替代。
