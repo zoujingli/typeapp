@@ -54,7 +54,6 @@ final class IdentityService
                 'id' => $id, 'login' => $login, 'name' => trim($name), 'password_hash' => password_hash($password, PASSWORD_BCRYPT),
                 'enabled' => true, 'failures' => 0, 'locked_until' => 0, 'recovery_verified' => true,
             ];
-            $values['version'] = 1;
             $user = $this->newUser($values);
             $user->save();
             $this->audit($transaction, $actorId, 'identity.created', $id, 'success', 'operator-command', $requestId, $actorRealm);
@@ -114,8 +113,11 @@ final class IdentityService
         } elseif ($action !== 'sessions') {
             throw new \InvalidArgumentException('identity_action_invalid');
         }
-        $user->version = $version + 1;
-        $user->save();
+        if ($action === 'sessions') {
+            $user->touch();
+        } else {
+            $user->save();
+        }
         if ($action === 'password' || $action === 'sessions' || ($action === 'status' && !$data['enabled'])) {
             $this->deleteSessions($id);
         }
@@ -183,7 +185,6 @@ final class IdentityService
                 $user->password_hash = password_hash($data['password'], PASSWORD_BCRYPT);
                 $this->deleteSessions($identity->subject());
             }
-            $user->version = (int)$user->version + 1;
             $user->save();
             $updated = $this->present($user) + ['enabled' => $user->enabled ? 1 : 0, 'version' => (int)$user->version];
             AuditLog::append($transaction, null, $identity->subject(), 'identity.' . $action, $identity->subject(), 'success', ['version' => $updated['version'], 'context' => $this->realm], $this->realm);

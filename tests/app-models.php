@@ -59,7 +59,6 @@ try {
                     $rows = $helper->equal('enabled')->like(['keyword' => 'name'])->query()->master()->get();
                     expect(count($rows) === 1 && $rows[0] instanceof SystemUser && $rows[0]->getId() === 'user-a', 'search 链式筛选或模型水合失败');
                     $member->setName('成员甲（已修改）');
-                    $member->setVersion(2);
                     expect($member->save() === 'updated' && $member->getVersion() === 2, '成员修改未遵守版本契约');
                     $bound->run(static function (ExecutionScope $other) use ($member): void {
                         expect(SystemUser::query()->master()->find('user-a') === null, '模型查询泄露其他 Tenant 的 System 账号');

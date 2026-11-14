@@ -287,8 +287,7 @@ final class RoleService
             $user = self::userQuery($realm)->findOrFail($binding['id']);
             self::version($user, $binding['version']);
             $user->relation('roles')->sync(array_map(static fn (array $role): array => ['id' => $role['id']], $roles));
-            $user->version = $binding['version'] + 1;
-            $user->save();
+            $user->touch();
             AuditLog::append(Db::connection('default', true), $tenant === '' ? null : $tenant, $identity, 'authorization.assigned', $binding['id'], 'success', ['version' => $binding['version'] + 1, 'content_hash' => hash('sha256', json_encode($roles, JSON_THROW_ON_ERROR))], $realm);
         }
         return ['updated' => count($users)];
@@ -340,8 +339,7 @@ final class RoleService
                     $users = self::userQuery($realm)->whereHas('roles', static fn (ModelQuery $query): ModelQuery => $query->where('id', '=', $id))->orderBy('id')->limit(100)->get();
                     foreach ($users as $user) {
                         $user->relation('roles')->detach($id);
-                        $user->version = (int)$user->version + 1;
-                        $user->save();
+                        $user->touch();
                     }
                 } while ($users !== []);
                 $role->relation('menus')->sync([]);

@@ -47,6 +47,8 @@ final class SystemUser extends Model
 
     protected ?string $tenantKey = 'tenant_id';
 
+    protected ?string $versionKey = 'version';
+
     protected ?string $createTime = 'created_at';
 
     protected array $schema = [
@@ -56,7 +58,7 @@ final class SystemUser extends Model
         'name' => ['type' => 'string', 'comment' => '业务显示名称。'],
         'password_hash' => ['type' => 'string', 'visible' => false, 'comment' => '登录口令散列，不进入公开投影。'],
         'enabled' => ['type' => 'boolean', 'comment' => '当前是否启用。'],
-        'version' => ['type' => 'integer', 'comment' => '资料版本由身份服务在授权锁内维护，登录计数不属于资料变更。'],
+        'version' => ['type' => 'integer', 'fillable' => false, 'required' => false, 'comment' => '资料版本由身份服务在授权锁内维护，登录计数不属于资料变更。'],
         'failures' => ['type' => 'integer', 'comment' => '当前口令验证连续失败次数。'],
         'locked_until' => ['type' => 'integer', 'comment' => '口令验证锁定截止时间，UTC Unix 秒；0 表示未锁定。'],
         'recovery_verified' => ['type' => 'boolean', 'comment' => '当前授权事实是否已完成恢复核对。'],

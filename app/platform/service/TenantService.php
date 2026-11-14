@@ -146,8 +146,7 @@ final class TenantService
                         $user = (new IdentityService('system'))->change($id, 'status', ['version' => $data['user_version'], 'enabled' => $data['enabled']], $actor, 'platform');
                     } elseif ($action === 'remove' || $action === 'replace') {
                         $target->relation('roles')->detach($role->id);
-                        $target->version = $target->version + 1;
-                        $target->save();
+                        $target->touch();
                     }
                 }
                 RoleService::requireHighest('system', $tenantId);
