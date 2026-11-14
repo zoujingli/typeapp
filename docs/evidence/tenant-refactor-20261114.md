@@ -46,7 +46,7 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 
 仓库目标工具链记录在 `toolchain.lock.json`：PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8；Node.js 26.13.1 和项目声明的 pnpm 12.18.0 已通过 `npx --yes pnpm@12.18.0` 实际执行验证，系统全局 pnpm 11.15.1 不作为目标版本证据。
 
-仍未验证：正式平台/profile 矩阵、Windows SDK、物联中心 AOT 产物上的真实设备身份 MQTT 持久会话/跨 Tenant 撤权与转配。静态 SDK 单程序、删除源码后的安装运行、embed-probe、加载项审计和 SQLite 单程序业务验收已在追加章节通过；独立通信组件的源运行 MQTT 结果仍不替代应用生产产物验收。补齐正式平台、Windows 和真实设备环境后，按 `docs/development/test-entrypoints.md` 顺序重跑剩余门禁，并以同一源码、锁文件和原生产物记录最终结果。
+仍未验证：正式平台/profile 矩阵和 Windows SDK。静态 SDK 单程序、删除源码运行、embed-probe、加载项审计、SQLite/PostgreSQL 单程序业务验收及物联中心 AOT 真实设备 MQTT 链路已在追加章节分别记录；独立通信组件的源运行 MQTT 结果仍不替代应用生产产物验收。补齐正式平台和 Windows 环境后，按 `docs/development/test-entrypoints.md` 顺序重跑剩余门禁，并以同一源码、锁文件和原生产物记录最终结果。
 
 ## 当前提交追加验证
 
