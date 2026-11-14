@@ -63,6 +63,10 @@ final class MenuService
                 ['settings', '系统管理', 'lucide:settings', ['site', 'audit']],
             ],
         ];
+        $home = [
+            'platform' => ['overview', '平台工作台', 'platform-overview', 'lucide:layout-dashboard'],
+            'system' => ['overview', '系统工作台', 'system-overview', 'lucide:layout-dashboard'],
+        ];
         $icons = ['users' => 'lucide:users', 'roles' => 'lucide:shield-check', 'tenants' => 'lucide:building-2',
             'menus' => 'lucide:menu', 'site' => 'lucide:palette', 'defaults' => 'lucide:panels-top-left',
             'config' => 'lucide:sliders-horizontal', 'broker' => 'lucide:network', 'operations' => 'lucide:activity',
@@ -90,6 +94,14 @@ final class MenuService
                     $orders[$realm . ':' . $resource] = ($position + 1) * 10;
                 }
             }
+        }
+        foreach ($home as $realm => [$key, $label, $component, $icon]) {
+            $module = $realm;
+            $pageId = md5($realm . ':' . $key);
+            $permission = $module . '.' . $key . '.read';
+            $nodes[] = ['id' => $pageId, 'realm' => $realm, 'parent_id' => null, 'kind' => 'page', 'name' => $label,
+                'path' => '/' . $realm . '/' . $key, 'component' => $component, 'permission' => $permission,
+                'icon' => $icon, 'order_number' => 0, 'enabled' => true, 'hidden' => false, 'guarded' => true];
         }
         foreach ($pages as $realm => $entries) {
             foreach ($entries as $order => $entry) {

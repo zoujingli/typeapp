@@ -143,8 +143,8 @@ try {
     $token = $request('POST', '/platform/auth/login', ['login' => 'platform-root', 'password' => $environment['APP_PLATFORM_PASSWORD']])['data']['accessToken'];
     $me = $request('GET', '/platform/auth/me', [], $token)['data'];
     expect($me['user']['id'] === $installed['platform']['id'] && in_array('platform.tenants.create', $me['permissions'], true), '平台初始 RBAC 无效');
-    expect(array_column($me['menus'], 'name') === ['客户与物联', '平台权限', '运维监控', '平台设置'], '平台菜单未按功能分组排序');
-    expect($me['menus'][0]['children'][0]['icon'] === 'lucide:building-2' && $me['menus'][1]['icon'] === 'lucide:shield-check', '菜单图标未对应实际功能');
+    expect(array_column($me['menus'], 'name') === ['平台工作台', '客户与物联', '平台权限', '运维监控', '平台设置'], '平台菜单未按功能分组排序');
+    expect($me['menus'][1]['children'][0]['icon'] === 'lucide:building-2' && $me['menus'][2]['icon'] === 'lucide:shield-check', '菜单图标未对应实际功能');
     $nodes = $request('GET', '/platform/broker/nodes', [], $token);
     expect($nodes['items'] === [] && $nodes['total'] === 0, '全新安装的 MQTT 节点观察应为空而非失败');
     $observerPassword = bin2hex(random_bytes(16));
@@ -168,8 +168,8 @@ try {
     $userToken = $request('POST', $prefix . '/system/auth/login', ['login' => 'root-user', 'password' => $first['credential']['password']])['data']['accessToken'];
     $system = $request('GET', $prefix . '/system/auth/me', [], $userToken)['data'];
     expect($system['identity']['tenant_id'] === $first['tenant']['id'] && in_array('center.devices.read', $system['permissions'], true), '系统会话缺少客户归属或 Center 授权');
-    expect(array_column($system['menus'], 'name') === ['用户与权限', '物联中心', '系统管理'], '系统菜单未按功能排序');
-    expect(array_column($system['menus'][1]['children'], 'path') === ['/center/products', '/center/enrollments', '/center/devices', '/center/applications', '/center/connections', '/center/reassignments'], 'Center 菜单顺序错误');
+    expect(array_column($system['menus'], 'name') === ['系统工作台', '用户与权限', '物联中心', '系统管理'], '系统菜单未按功能排序');
+    expect(array_column($system['menus'][2]['children'], 'path') === ['/center/products', '/center/enrollments', '/center/devices', '/center/applications', '/center/connections', '/center/reassignments'], 'Center 菜单顺序错误');
     $subdomain = ['X-Forwarded-Host' => 'alpha.tenant.test', 'X-Forwarded-Proto' => 'http'];
     $bound = $request('GET', '/public/context', [], '', 200, $subdomain)['data'];
     expect($bound['bound'] && $bound['tenant']['id'] === $first['tenant']['id'] && $bound['site']['name'] === '客户甲', '子域名未固定客户配置');
