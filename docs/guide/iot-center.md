@@ -2,7 +2,7 @@
 
 物联中心是 TypeApp 的成品案例，采用单程序、多运行角色。Platform 管理平台与客户，System 管理当前 Tenant 的人员和系统设置，Center 管理该客户的设备及接入应用；通信层负责鉴权和原始消息路由，客户业务系统解释载荷。
 
-本文对应当前开发源码。依赖与架构正在共同验收，历史发布版的程序、界面和原生证据保持各自身份；当前候选的完整 AOT、无源码运行、真实 TLS MQTT 和正式平台/profile 矩阵尚未完成。设计取舍见[架构与界面设计](../development/iot-control-client-design.md)，实际验证入口见[验收说明](../development/test-entrypoints.md)。
+本文对应当前开发源码。历史发布版的程序、界面和原生证据保持各自身份；当前 Tenant 代码基线已在 macOS ARM64 完成全量 AOT、无源码运行、真实 TLS MQTT 和三库管理链路验收，正式平台/profile 矩阵及完整登录后浏览器验收仍未完成。设计取舍见[架构与界面设计](../development/iot-control-client-design.md)，实际验证入口见[验收说明](../development/test-entrypoints.md)。
 
 ## 职责与身份
 
@@ -349,8 +349,8 @@ sequenceDiagram
 
 ## 当前验收边界
 
-当前开发候选已有本机三库人员与 Center 管理 HTTP 验证、前端类型检查、生产构建和浏览器页面检查。完整应用 AOT、无源码运行、真实 PostgreSQL 同步后端与 TLS MQTT，以及正式平台/profile 矩阵仍须按[验收入口](../development/test-entrypoints.md)完成；单个字段或编译器探针不能代替整个产品。
+当前开发候选已有本机三库人员与 Center 管理 HTTP、前端类型检查、生产构建、全量 AOT、无源码运行、真实 PostgreSQL 同步后端和 TLS MQTT 设备链路验证；浏览器证据目前覆盖登录入口及窄屏布局 smoke，完整登录后页面仍须补验。正式平台/profile 矩阵仍须按[验收入口](../development/test-entrypoints.md)完成；单个字段或编译器探针不能代替整个产品。
 
-旧版本的源码、程序摘要和结果保持原身份。当前内置 Swoole 共享模块清单与源码适配尚不匹配，严格选择门禁会拒绝过期模块；需要按准确源码及 ABI 重建验证，不能只更新摘要放行。当前候选尚未覆盖的容量、独立故障域、真实设备及其他平台不列为通过；部署者应使用同一版本的文档、配置和程序。
+旧版本的源码、程序摘要和结果保持原身份。当前 PHP 8.5.12 的 Swoole 共享模块只在 macOS ARM64 重建并核验，Linux 与 Windows 目录中的模块仍是历史 ABI，严格选择门禁会拒绝它们；不能只更新摘要放行。当前候选尚未覆盖的容量、独立故障域和其他平台不列为通过；真实设备 TLS 链路已按验收记录完成，部署者应使用同一版本的文档、配置和程序。
 
 [快速开始](quickstart.md) · [MQTT 组件](plugins/type-mqtt.md) · [构建与部署](deployment.md)
