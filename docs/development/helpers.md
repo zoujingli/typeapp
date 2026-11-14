@@ -78,6 +78,8 @@ Query 的分页主键沿用 `id`，ModelQuery 使用模型自身主键；需要�
 
 ## 快捷校验
 
+应用层不再维护另一套 input 解析或校验机制。控制器的普通请求统一使用 `Type\Validate\Input` 配合 `_vali()`；需要让路由动作接收强类型参数时，`ValidatedInput` 只承担已校验数据的 DTO 映射，仍复用同一套 `Schema`、`Field` 和 `_vali()` 语义。应用内的字段白名单辅助类只做来源键拒绝，不新增规则 DSL、隐式合并或数据库访问。
+
 ```php
 $values = _vali([
     'age' => Field::integer()->required()->cast()->range(0, 150),
