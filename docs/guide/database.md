@@ -229,7 +229,7 @@ flowchart LR
 
 这些例外不授予普通 CRUD 绕过模型的权利。`CenterRuntimeMetric` 的普通读取通过 ModelQuery，只有 `recordObservation()` 内的两条原子 SQL 属于已登记的运行观察例外；`CenterRecovery` 的状态读取、创建和推进通过 ModelQuery，`center_recovery_subject` 因 `(recovery_id, kind, subject_id)` 复合主键超出当前单主键 ORM 能力，继续由 `RecoveryService` 在固定白名单内执行受控查询，不能用任一列冒充主键；审计动态联合查询、恢复游标和 MQTT 协议表也必须按具体方法登记。后续迁移先验证真实事务和租户边界，再扩大覆盖范围。
 
-当前 Center 设备、应用、转配、恢复和协议接入服务均纳入同一 Model-first 静态门禁；每个保留的表、查询或原子执行入口都绑定到完整方法及表达式，删除或改写调用后对应登记会立即报未使用。普通设备目录通过 `DeviceDirectory` 只读模型读取，跨模型投影和协议热路径只有在无法保持原子语义时才保留受控底层入口。
+当前身份目录、Tenant、产品、注册资格、应用、授权明细和转配列表均通过具体 Model 的 `query()` 与 `_query()` 白名单助手完成筛选、排序和有界分页；`_query()` 只消费调用者显式声明的字段，不读取 Request，也不决定授权或租户范围。Center 设备运行观察、恢复、审计和协议接入服务仍纳入同一 Model-first 静态门禁；每个保留的表、查询或原子执行入口都绑定到完整方法及表达式，删除或改写调用后对应登记会立即报未使用。普通设备目录通过 `DeviceDirectory` 只读模型读取，跨模型投影和协议热路径只有在无法保持原子语义时才保留受控底层入口。
 
 ## 字段与修改
 
