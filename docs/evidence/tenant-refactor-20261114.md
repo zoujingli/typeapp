@@ -73,3 +73,12 @@ Platform、System、Center 的职责、Tenant 入口、主域名客户选择、�
 - 原生 PHP 8.5.12 ZTS + Swoole 6.3.0RC1：完整 PHPUnit `309 tests / 18029 assertions`、`tests/app-models.php`、`tests/tenant.php sqlite` 通过；Model-first、ProjectStructure 与模型同步筛选共 `15 tests / 631 assertions` 通过。
 - `composer cs-check` 通过（922 个文件，0 个待修正）；`composer test:docs` 通过（1504 处引用、131 条路由、292 个命令、247 个 Composer 脚本）；`pnpm typecheck` 与 `pnpm build` 通过（Vite 8.3.8，7875 个模块），仅保留已有大 chunk 警告。
 - 本轮仍未重新执行静态单程序、删除源码运行、正式平台/profile 矩阵、真实 MySQL/PostgreSQL 服务、真实 TLS MQTT 设备会话和跨 Tenant 转配；既有记录中的对应证据和限制继续有效，不能由本轮 SQLite 与源运行检查替代。
+
+## 当前提交的 AOT 与三库追加验证
+
+当前源码提交 `022f16f` 在锁定 PHP 8.5.12 ZTS、PHPX 2.9.8、Swoole 6.3.0RC1 和前端 Node.js 26.13.1 / pnpm 12.18.0 工作区下重新执行：
+
+- `tools/build-application.php --shared-development`：TypePHP 全量生成并编译 301 个 C++ 文件，原生程序链接通过。当前开发 AOT 产物 `build/app/type-app` SHA-256 为 `00aa43d23fb8072296fe28c10fd28b84404ca3548a867cb2a39cb1ede433a785`，build id 为 `81ee21bee40b978d3e94e189a9954e4947de6f864133b91cc26970366270d265`。
+- 同一 AOT 产物注入受控 runtime profile 后，`tests/tenant.php sqlite`、`mysql`（MySQL 8.4.11）和 `pgsql`（PostgreSQL 17.11）Tenant 闭环全部通过；覆盖空库安装、模块表前缀、登录入口、RBAC、品牌、模拟交接、MQTT 模拟观测、恢复核对和真实 HTTP 隔离。
+- `tests/model-sync.php` 在真实 MySQL 8.4.11 上通过预览、生成、重复同步、字段注释、默认值、生成列、字段增删保护、非法输入拒绝和 Tenant 隔离 CRUD。
+- AOT 首次未注入 runtime profile 时的 MySQL `internal_error` 已定位为启动配置缺失；补充 `PHPRC` 和 `PHP_INI_SCAN_DIR` 后同一产物通过，不能把首次配置错误记作数据库兼容性失败。
