@@ -49,13 +49,10 @@ task_hooks="$("${task_php_probe[@]}" "$task_hooks_script")"
 rm -f "$task_hooks_script"
 printf '受控 Swoole PDO 钩子：%s\n' "$task_hooks"
 [[ "$task_hooks" == hooks ]]
-# 受控模块写入工作区扫描目录，避免污染可缓存的 PHP 前缀。
-task_cli_d="$GITHUB_WORKSPACE/.cache/typeapp-php.d"
-mkdir -p "$task_cli_d"
-printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" > "$task_cli_d/zz-typeapp-swoole.ini"
-task_default_scan="$(php-config --prefix)/etc/php.d"
-printf 'PHP_INI_SCAN_DIR=%s:%s\n' "$task_cli_d" "$task_default_scan" >> "$GITHUB_ENV"
-export PHP_INI_SCAN_DIR="$task_cli_d:$task_default_scan"
+# 后续控制端必须继续使用同一份运行配置；只切换扫描目录会丢失 PDO 主模块，
+# 进而让 Swoole 在 PHP 启动时报告“required module pdo is not loaded”。
+printf 'PHPRC=%s\nPHP_INI_SCAN_DIR=\n' "$task_ini" >> "$GITHUB_ENV"
+export PHPRC="$task_ini" PHP_INI_SCAN_DIR=
 php -m | grep -qx swoole
 # 公开消费者直接安装依赖，不忽略所需扩展；错误在大规模编译前暴露。
 composer check-platform-reqs --no-interaction

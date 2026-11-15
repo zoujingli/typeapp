@@ -128,7 +128,7 @@ jobs:
         run: ./.github/scripts/prepare-windows-native.ps1
       - name: 安装锁定开发与生产依赖
         run: |
-          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress --ignore-platform-req=ext-pcntl --ignore-platform-req=ext-swoole
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" validate --strict
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -391,7 +391,7 @@ jobs:
         run: ./.github/scripts/prepare-windows-native.ps1 -TraceLog
       - name: 安装锁定工具链
         run: |
-          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress --ignore-platform-req=ext-pcntl --ignore-platform-req=ext-swoole
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 快速核对指定 DNS 与线程重建
         if: matrix.protocol == 'tcp'
@@ -498,7 +498,7 @@ jobs:
         run: ./.github/scripts/prepare-windows-native.ps1 -TraceLog
       - name: 安装锁定工具链
         run: |
-          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress --ignore-platform-req=ext-pcntl --ignore-platform-req=ext-swoole
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 运行 HTTP 线程原生消费者
         run: |
