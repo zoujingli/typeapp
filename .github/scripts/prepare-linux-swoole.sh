@@ -74,6 +74,7 @@ printf '受控 Swoole PDO 钩子：%s\n' "$task_hooks"
 # 受控模块写入独立扫描目录；保留 setup-php 原扫描目录中的 PDO 等基础扩展。
 task_cli_d="$GITHUB_WORKSPACE/.cache/typeapp-php.d"
 mkdir -p "$task_cli_d"
+printf 'extension=%s\n' "$task_socket_module" > "$task_cli_d/00-typeapp-sockets.ini"
 printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" > "$task_cli_d/zz-typeapp-swoole.ini"
 task_original_scan="${PHP_INI_SCAN_DIR:-}"
 task_scan="$task_cli_d"
