@@ -81,6 +81,7 @@ jobs:
           --health-retries=20
     env:
       TYPE_RELEASE_VERSION: ${{ inputs.version }}
+      TYPE_SWOOLE_BUILD_FROM_SOURCE: '1'
       COMPOSER_NO_INTERACTION: '1'
       TYPE_REDIS_HOST: 127.0.0.1
       TYPE_MYSQL_HOST: 127.0.0.1

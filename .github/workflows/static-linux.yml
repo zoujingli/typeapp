@@ -105,6 +105,7 @@ jobs:
         platform: ${{ fromJSON(inputs.platform == 'linux-x64' && '["linux-x64"]' || inputs.platform == 'linux-arm64' && '["linux-arm64"]' || '["linux-x64","linux-arm64"]') }}
     env:
       TYPE_RELEASE_VERSION: ${{ inputs.version }}
+      TYPE_SWOOLE_BUILD_FROM_SOURCE: '1'
       TYPEAPP_BUILD_PROFILE: ${{ inputs.profile || 'sqlite' }}
       TYPE_BASE_SOURCE: ${{ inputs.base_source }}
       TYPE_BENCHMARK_BUILD_TIMING: ${{ inputs.base_source != '' && inputs.tutorial_mode == '' && '1' || '0' }}

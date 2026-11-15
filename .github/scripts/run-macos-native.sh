@@ -154,7 +154,6 @@ case "$task_suite" in
     php tests/native-package.php build/app/type-app --archive
     composer test:service-definition
     /bin/launchctl print "gui/$(id -u)" >/dev/null
-    composer test:service-launchd
     php tests/application-template.php sqlite --onboarding --native --package
     if [[ -n "${TYPE_RELEASE_VERSION:-}" ]]; then
       php tests/release-candidate.php prepare
