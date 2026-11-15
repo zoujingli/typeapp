@@ -75,6 +75,9 @@ printf '受控 Swoole PDO 钩子：%s\n' "$task_hooks"
 task_cli_d="$GITHUB_WORKSPACE/.cache/typeapp-php.d"
 mkdir -p "$task_cli_d"
 printf 'extension=%s\n' "$task_socket_module" > "$task_cli_d/00-typeapp-sockets.ini"
+task_redis_module="$("$PHP_HOME/bin/php-config" --extension-dir)/redis.so"
+[[ -f "$task_redis_module" ]] || { echo "PHP SDK 缺少 redis.so：$task_redis_module" >&2; exit 1; }
+printf 'extension=%s\n' "$task_redis_module" > "$task_cli_d/10-typeapp-redis.ini"
 printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" > "$task_cli_d/zz-typeapp-swoole.ini"
 # task_ini 已经合并了本轮需要的 PDO、curl、Redis、pcntl 等声明；关闭原始
 # 扫描目录，确保 sockets 与 Swoole 只在同一目录按 00/zz 顺序装载。
