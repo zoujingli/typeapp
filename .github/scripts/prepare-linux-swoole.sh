@@ -91,14 +91,26 @@ printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" > "$t
 task_scan="$task_cli_d"
 printf 'PHP_INI_SCAN_DIR=%s\n' "$task_scan" >> "$GITHUB_ENV"
 export PHP_INI_SCAN_DIR="$task_scan"
+# Composer 的 bin 入口可能固定使用 setup-php 的解释器；显式包装它，
+# 使 Composer 自身及所有 @php 脚本都继承本轮 PHP_HOME 的 ZTS SDK。
+task_composer="$(command -v composer)"
+[[ "$task_composer" == /* && -f "$task_composer" ]] || { echo '找不到可包装的 Composer 入口。' >&2; exit 1; }
+task_bin="$GITHUB_WORKSPACE/.cache/typeapp-bin"
+mkdir -p "$task_bin"
+cat >"$task_bin/composer" <<EOF
+#!/usr/bin/env bash
+exec "$PHP_HOME/bin/php" "$task_composer" "\$@"
+EOF
+chmod 0755 "$task_bin/composer"
 # configure-toolchain 可能返回带内容摘要的 SDK 目录，而 setup-php 早先
 # 写入的 PATH 仍指向另一份同版本 PHP；后续 Composer/PHP 命令必须和扩展
 # 使用同一套 SDK，否则会出现 socket_ce 等 ABI 符号缺失。
 printf '%s\n' "$PHP_HOME/bin" >> "$GITHUB_PATH"
-export PATH="$PHP_HOME/bin:$PATH"
+printf '%s\n' "$task_bin" >> "$GITHUB_PATH"
+export PATH="$task_bin:$PHP_HOME/bin:$PATH"
 # GitHub runner 将 GITHUB_PATH 条目追加到当前 PATH；显式写入环境变量，
 # 确保下一步 shell 仍把本轮 SDK 放在 setup-php 的同版本目录之前。
-printf 'PATH=%s:%s\n' "$PHP_HOME/bin" "$PATH" >> "$GITHUB_ENV"
+printf 'PATH=%s\n' "$task_bin:$PHP_HOME/bin:$PATH" >> "$GITHUB_ENV"
 hash -r
 printf '受控 PHP：%s\n' "$(command -v php)"
 "$PHP_HOME/bin/php" -r 'printf("PHP %s %s\n", PHP_VERSION, PHP_ZTS ? "ZTS" : "NTS");'
