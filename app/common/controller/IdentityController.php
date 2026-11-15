@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace app\common\controller;
 
+use app\common\input\InputFields;
 use app\common\service\RoleService;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -135,7 +136,7 @@ final class IdentityController
         };
         $identity = $this->identity($request);
         $scope = $route[0] === 'system' ? (string)$identity->attributes()['tenant_id'] : 'platform';
-        $input = $kind . '.' . $operation === 'roles.assign' ? $this->assignments() : \_vali($rules, 'body');
+        $input = $kind . '.' . $operation === 'roles.assign' ? $this->assignments() : InputFields::body($request, $rules);
         return $this->response(['data' => RoleService::change(
             $identity,
             substr($request->getHeaderLine('Authorization'), 7),

@@ -19,8 +19,13 @@ final class InputFields
             throw new HttpError(415, 'json_required');
         }
         $input = Input::json(RequestBody::read($request->getBody(), 32768), 32768, 12);
-        self::only($input, 'body', array_keys($fields), $unknownCode);
-        return \_vali($fields, $input);
+        $allowed = [];
+        foreach (array_keys($fields) as $rule) {
+            $parts = explode('.', $rule, 2);
+            $allowed[$parts[0]] = true;
+        }
+        self::only($input, 'body', array_keys($allowed), $unknownCode);
+        return \_vali($fields, $input->source('body'));
     }
 
     /**
