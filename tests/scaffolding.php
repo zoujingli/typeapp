@@ -47,7 +47,7 @@ try {
         ksort($files);
         return $files;
     };
-    $make(['module', 'app\catalog\Product', '--table=products', '--route=/products', '--role=users', '--version=002_products', '--migration-registry=app\common\database\Schema']);
+    $make(['module', 'app\catalog\Product', '--table=products', '--route=/products', '--role=users', '--version=002_products']);
     $make(['service', 'app\work\Marker']);
     $make(['command', 'app\work\PrintMarker', '--service=app\work\Marker', '--name=marker']);
     $make(['job', 'app\work\MarkerJob', '--service=app\work\Marker', '--type=marker', '--version=1']);
@@ -148,9 +148,17 @@ try {
     $make(['controller', 'app\notes\NoteController', '--service=app\notes\NoteService', '--input=app\notes\NoteInput', '--route=/notes', '--role=users']);
     $make(['migration', 'app\notes\CreateNotes', '--version=003_notes']);
     $before = file_get_contents($config);
-    $registry = file_get_contents($work . '/app/common/database/Schema.php');
-    expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, 'module', 'app\duplicate\Product', '--table=duplicate', '--route=/products', '--role=users', '--version=004_duplicate', '--migration-registry=app\common\database\Schema'])[0] !== 0, '重复路由未在发布前拒绝');
-    expect(!is_dir($work . '/app/duplicate') && file_get_contents($config) === $before && file_get_contents($work . '/app/common/database/Schema.php') === $registry, '重复路由留下半个模块');
+    $migrationSnapshot = static function () use ($work): array {
+        $result = [];
+        foreach (glob($work . '/database/migrations/*.php') ?: [] as $file) {
+            $result[basename($file)] = hash_file('sha256', $file);
+        }
+        ksort($result);
+        return $result;
+    };
+    $registry = $migrationSnapshot();
+    expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, 'module', 'app\duplicate\Product', '--table=duplicate', '--route=/products', '--role=users', '--version=004_duplicate'])[0] !== 0, '重复路由未在发布前拒绝');
+    expect(!is_dir($work . '/app/duplicate') && file_get_contents($config) === $before && $migrationSnapshot() === $registry, '重复路由留下半个模块');
     if (PHP_OS_FAMILY !== 'Windows') {
         symlink($work . '/app/notes', $work . '/app/linked');
         try {
@@ -161,7 +169,7 @@ try {
         if (function_exists('posix_geteuid') && posix_geteuid() !== 0) {
             chmod($work . '/database/migrations', 0555);
             try {
-                expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, 'module', 'app\readonly\Product', '--table=readonly', '--route=/readonly', '--role=users', '--version=004_readonly', '--migration-registry=app\common\database\Schema'])[0] !== 0, '只读迁移目录没有拒绝');
+                expect(execute([PHP_BINARY, $work . '/vendor/bin/type', 'make', $config, 'module', 'app\readonly\Product', '--table=readonly', '--route=/readonly', '--role=users', '--version=004_readonly'])[0] !== 0, '只读迁移目录没有拒绝');
                 expect(!is_dir($work . '/app/readonly') && file_get_contents($config) === $before, '只读目标留下半个模块');
             } finally {
                 chmod($work . '/database/migrations', 0755);

@@ -167,6 +167,6 @@ build/type-project-release licenses
 
 完整原生、无源码镜像与分发证据记录在[开发主仓](https://github.com/zoujingli/typeapp/blob/main/docs/development/platform-support.md)。使用本模板的新能力时还需对应的新组件批次与验收结果，旧报告不为新增修改背书。
 
-新增模块可用 `php vendor/bin/type make type-app.json module 'app\catalog\Product' --table=products --route=/products --role=users --version=002_products '--migration-registry=app\common\database\Schema'`，随后显式运行 `schema:prepare app/catalog/database/CreateProduct.php`、检查并提交冻结快照、`dev type-app.json migrate run`。完整单类/命令/Job/Task入口及鉴权边界见[开发通道脚手架教程](https://iots.top/next/#/guide/scaffolding)。生成的命令由模板入口委托共同装配执行。
+新增模块可用 `php vendor/bin/type make type-app.json module 'app\catalog\Product' --table=products --route=/products --role=users --version=002_products`，生成的匿名 `SchemaMigration` 会写入 `database/migrations/002_products.php`，检查并提交脚本后执行 `dev type-app.json migrate run`。完整单类/命令/Job/Task入口及鉴权边界见[开发通道脚手架教程](https://iots.top/next/#/guide/scaffolding)。生成的命令由模板入口委托共同装配执行。
 
 当前源码的[连续目录教程](https://iots.top/next/#/guide/tutorial)保留所选模板约束，按同批版本增加缓存、Queue 与 Scheduler，真实生成第二模块并验证租户、关系、三库冲突、事件和命名源 Outbox。[可靠性续篇](https://iots.top/next/#/guide/catalog-reliability)复用同一公开测试入口验证 Redis、持久游标、HTTPS 和停止；这些新增接口尚未包含 RC14。设置的 `DB_DRIVER` 与安装驱动不符时，检查、迁移和 HTTP 在连接前拒绝，错误码为 `runtime_profile_database_mismatch`。

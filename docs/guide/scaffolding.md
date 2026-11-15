@@ -10,14 +10,13 @@
 
 ```sh
 php vendor/bin/type make type-app.json module 'app\catalog\Product' \
-  --table=products --route=/products --role=users --version=002_products \
-  '--migration-registry=app\common\database\Schema'
+  --table=products --route=/products --role=users --version=002_products
 php vendor/bin/type inspect-application type-app.json
 php vendor/bin/type dev type-app.json migrate up
 php vendor/bin/type dev type-app.json serve
 ```
 
-生成的模型、服务、控制器和迁移脚本位于 `app/catalog`。迁移登记器只追加新的 `migration($driver)` 调用，不改写历史 SQL。控制器用 `_vali` 接收名称，Service 通过模型对象保存。后续结构变化新建迁移脚本，不能改写已经应用到数据库的版本。
+生成的模型、服务、控制器位于 `app/catalog`，迁移脚本位于 `database/migrations`，文件返回匿名 `SchemaMigration`，版本来自文件名。构建期扫描目录并生成静态注册表，运行时不读取迁移源文件。控制器用 `_vali` 接收名称，Service 通过模型对象保存。后续结构变化新建迁移脚本，不能改写已经应用到数据库的版本。
 
 模型持有 `id/name/version`，`present()` 明确输出这三个字段。Service 的原类型方法声明事务，控制器由共同装配注入这个 Service，不传递 Connection。列表按 id 稳定排序且最多二十条。控制器先要求认证产生的 Identity，再核对明确角色；模板默认令牌只有 `users` 角色。
 

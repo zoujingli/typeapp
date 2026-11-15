@@ -4,7 +4,6 @@ declare(strict_types=1);
 use Type\Build\BuildIdentity;
 use Type\Build\BuildPlatform;
 use Type\Build\BuildProject;
-use Type\Build\SchemaCompiler;
 use Type\Build\SourceSet;
 use Type\Testing\Process;
 
@@ -21,12 +20,10 @@ $project = (new BuildProject())->read($configuration);
 if ($project['root'] !== $root || is_dir($root . '/app/catalog')) {
     throw new RuntimeException('目录教程需要尚未创建 catalog 模块的独立应用');
 }
-$registry = $root . '/app/common/database/Schema.php';
-$historical = file_get_contents($registry);
 $manifestBefore = hash_file('sha256', $root . '/composer.json');
 // 与教程手工命令相同的公开 make，完整检查失败后不能留下半个模块。
 $process = new Process([PHP_BINARY, $root . '/vendor/bin/type', 'make', $configuration, 'module', 'app\catalog\Product',
-    '--table=catalog_products', '--route=/products', '--role=users', '--version=002_catalog_products', '--migration-registry=app\common\database\Schema'], dirname($root));
+    '--table=catalog_products', '--route=/products', '--role=users', '--version=002_catalog_products'], dirname($root));
 try {
     $result = $process->wait(15);
     if (!$result->successful()) {
@@ -36,7 +33,7 @@ try {
     $process->stop();
 }
 // 这些完整文件就是各节可阅读、可复制的业务编辑结果；不包含运行期模板机制。
-foreach (['model', 'input', 'service', 'controller', 'middleware', 'database', 'runtime', 'event'] as $directory) {
+foreach (['model', 'input', 'service', 'controller', 'middleware', 'runtime', 'event'] as $directory) {
     if (!is_dir($root . '/app/catalog/' . $directory)) {
         mkdir($root . '/app/catalog/' . $directory, 0755, true);
     }
@@ -44,12 +41,16 @@ foreach (['model', 'input', 'service', 'controller', 'middleware', 'database', '
         copy($source, $root . '/app/catalog/' . $directory . '/' . basename($source));
     }
 }
-$registrySource = file_get_contents($registry);
-$registration = '\app\catalog\database\CreateProduct::migration($driver)';
-if (substr_count($registrySource, $registration) !== 1) {
-    throw new RuntimeException('教程迁移登记位置不唯一');
+$migrationDirectory = $root . '/database/migrations';
+if (!is_dir($migrationDirectory) && !mkdir($migrationDirectory, 0755, true) && !is_dir($migrationDirectory)) {
+    throw new RuntimeException('教程无法建立迁移目录');
 }
-file_put_contents($registry, str_replace($registration, $registration . ', \app\catalog\database\CreateLabels::migration($driver), \app\catalog\database\AddProductNote::migration($driver), \app\catalog\database\CreateDelivery::migration($driver), (new \Type\Orm\Outbox\Store("catalog_outbox"))->migration($driver, "006_catalog_outbox")', $registrySource));
+foreach (glob(__DIR__ . '/migrations/*.php') as $source) {
+    $target = $migrationDirectory . '/' . basename($source);
+    if (is_file($target) || is_link($target) || !copy($source, $target)) {
+        throw new RuntimeException('教程无法复制标准迁移脚本：' . basename($source));
+    }
+}
 $settings = json_decode(file_get_contents($configuration), true, 512, JSON_THROW_ON_ERROR);
 $settings['application']['services'][] = ['id' => 'catalog.tenant', 'class' => 'app\catalog\middleware\CatalogTenant'];
 $settings['application']['http']['middleware']['catalog.tenant'] = 'catalog.tenant';
@@ -72,9 +73,6 @@ $settings['native-inputs'] = array_values(array_unique([...($settings['native-in
 $profiles = json_decode(file_get_contents(__DIR__ . '/build-profiles.json'), true, 512, JSON_THROW_ON_ERROR);
 $settings['build-profiles'] = $profiles['build-profiles'];
 file_put_contents($configuration, json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
-foreach (['CreateProduct', 'CreateLabels', 'AddProductNote', 'CreateDelivery'] as $schema) {
-    (new SchemaCompiler())->prepare($root . '/app/catalog/database/' . $schema . '.php');
-}
 foreach ([
     ['command', 'app\catalog\command\CatalogCommand', '--service=app\catalog\service\Reliability', '--name=catalog'],
     ['job', 'app\catalog\job\DeliverProduct', '--service=app\catalog\service\DeliveryService', '--type=catalog.deliver', '--version=1'],
@@ -129,7 +127,8 @@ foreach ((new BuildIdentity())->files([$root . '/app', ...$production['sources']
 }
 file_put_contents($root . '/catalog-candidate.json', json_encode(['protocol' => 1, 'channel' => $developmentSource ? 'development' : 'published-inputs-unverified',
     'tutorial-sources' => $identity, 'template-source-sha256' => $templateOrigin['source-sha256'], 'composer-sha256' => $manifestBefore, 'lock-sha256' => hash_file('sha256', $root . '/composer.lock'),
-    'historical-registry-sha256' => hash('sha256', $historical), 'packages' => $packages, 'installed-production-inputs' => $installedBytes], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
+    'migration-sources' => array_map(static fn (string $path): string => substr($path, strlen($migrationDirectory) + 1), glob($migrationDirectory . '/*.php') ?: []),
+    'packages' => $packages, 'installed-production-inputs' => $installedBytes], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
 if (hash_file('sha256', $root . '/composer.json') !== $manifestBefore) {
     throw new RuntimeException('教程不能修改已选择的消费者依赖约束');
 }

@@ -34,7 +34,7 @@ php dev.php check
 
 [create.php 完整源码](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/create.php)复用 `ProjectCreator`，保留所选模板的约束并以同批约束增加 `type-redis`、`type-cache`、`type-queue`、`type-scheduler`。本教程从默认 Packagist 安装；维护者验证未发布源码时才额外运行 `use-development-sources.php`，该结果不替代公开消费。使用 `mysql` 或 `pgsql` 替换创建命令最后的 `sqlite`，在安装前确定驱动，随后填写 `.env` 的数据库地址、库名和账号；不要使用 `--ignore-platform-reqs`。
 
-提交 `composer.json`、`composer.lock` 和后续的 `catalog-candidate.json`。候选报告记录完整教程源码摘要、实际组件版本/参考提交、锁摘要和原迁移登记器摘要。包约束不会在教程准备时被偷偷改写。帮助和检查不连接外部数据库，不要求 API 令牌有效。
+提交 `composer.json`、`composer.lock` 和后续的 `catalog-candidate.json`。候选报告记录完整教程源码摘要、实际组件版本/参考提交、锁摘要和迁移脚本清单。包约束不会在教程准备时被偷偷改写。帮助和检查不连接外部数据库，不要求 API 令牌有效。
 
 ## 2. 用 make 建立第二模块
 
@@ -48,12 +48,11 @@ php vendor/bin/type dev type-app.json migrate run
 php vendor/bin/type dev type-app.json migrate history
 ```
 
-[setup.php](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/setup.php)首先执行以下正式脚手架命令，然后把本教程列出的完整业务文件复制到应用中，登记中间件和后续新迁移，调用正式 `schema:prepare` 冻结三库 SQL。它是可核对的开发编辑步骤，生产程序不会加载该脚本。已有 `app/catalog` 会明确拒绝；已执行准备脚本后不要再重复运行下面的单独命令。
+[setup.php](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/setup.php)首先执行以下正式脚手架命令，然后把本教程列出的完整业务文件和匿名 `SchemaMigration` 脚本复制到应用中。迁移文件名携带版本，构建期统一编译为静态注册表；生产程序不读取迁移源文件。它是可核对的开发编辑步骤，生产程序不会加载该脚本。已有 `app/catalog` 会明确拒绝；已执行准备脚本后不要再重复运行下面的单独命令。
 
 ```bash
 php vendor/bin/type make type-app.json module 'app\catalog\Product' \
-  --table=catalog_products --route=/products --role=users --version=002_catalog_products \
-  '--migration-registry=app\common\database\Schema'
+  --table=catalog_products --route=/products --role=users --version=002_catalog_products
 ```
 
 完整源码与应用落点一一对应：
@@ -65,10 +64,10 @@ php vendor/bin/type make type-app.json module 'app\catalog\Product' \
 | `app/catalog/service/ProductService.php` | [原 Service 的 CRUD、搜索、关系和冲突写入](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/service/ProductService.php) |
 | `app/catalog/controller/ProductController.php` | [类型化动作、状态码与授权](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/controller/ProductController.php) |
 | `app/catalog/middleware/CatalogTenant.php` | [模板身份到固定租户的授权映射](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/middleware/CatalogTenant.php) |
-| `app/catalog/database/` | [独立 Schema 与冻结快照路径](https://github.com/zoujingli/typeapp/tree/main/examples/catalog/database) |
+| `database/migrations/` | [匿名 SchemaMigration 脚本](https://github.com/zoujingli/typeapp/tree/main/examples/catalog/migrations) |
 | `tests/catalog.php`、`tests/tutorial.php` | [同一套 PHP/AOT 真实请求断言](https://github.com/zoujingli/typeapp/blob/main/examples/catalog/test.php) |
 
-`001_users` 的历史 SQL 不变。`002_catalog_products` 建商品与 `(tenant_id, code)` 唯一身份，`003_catalog_labels` 建标签与关系对，`004_catalog_note` 用新的 `add-column` 给已有表增加可空备注。续篇使用的新迁移 `005_catalog_delivery` 和 `006_catalog_outbox` 也一次登记。商品、关系及后台效果使用逻辑命名源 `catalog`；模板用户继续使用 `default`，教程显式将两源指向选定数据库。准备快照不连接数据库；`migrate run` 才应用冻结 SQL。每个声明和对应 `snapshots/*.json` 都应审查并提交，已发布快照不可重写。
+`001_users` 的历史 SQL 不变。`002_catalog_products` 建商品与 `(tenant_id, code)` 唯一身份，`003_catalog_labels` 建标签与关系对，`004_catalog_note` 给已有表增加可空备注。续篇使用的新迁移 `005_catalog_delivery` 和 `006_catalog_outbox` 也放在同一目录。商品、关系及后台效果使用逻辑命名源 `catalog`；模板用户继续使用 `default`，教程显式将两源指向选定数据库。`migrate run` 才应用迁移 SQL；每个脚本都应审查并提交，已应用版本不可重写。
 
 MySQL DDL 非事务，失败可部分生效，必须核对状态和真实结构再按迁移控制台显式恢复；不能直接再跑整个业务。SQLite 增列使用真实原生语义，不隐式重建表。执行过迁移的目录不要当成全新练习重复准备。
 
