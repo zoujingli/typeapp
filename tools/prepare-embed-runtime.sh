@@ -46,6 +46,14 @@ if [[ ! -f "$task_work/pcntl.so" ]]; then
 fi
 php "$task_root/tools/configure-embed-runtime.php" "$task_work" shared >/dev/null
 
+# Swoole 的 sockets 支持使用 PHP sockets 扩展导出的 socket_ce。CLI 配置可能
+# 通过扫描目录加载该扩展，而 embed 运行时会关闭扫描目录，因此把同一 SDK
+# 的 sockets 模块登记到生成的独立配置，确保后续装配 Swoole 时依赖顺序稳定。
+task_socket_module="$("$task_sdk/bin/php-config" --extension-dir)/sockets.so"
+if [[ -f "$task_socket_module" ]] && ! grep -Eiq '^[[:space:]]*extension[[:space:]]*=.*sockets(?:\.so)?' "$task_work/php.ini"; then
+  printf 'extension=%s\n' "$task_socket_module" >> "$task_work/php.ini"
+fi
+
 # 原生运行配置必须使用本轮核验的 Swoole 与 curl 模块。控制器配置可能仍带有
 # setup-php 的旧模块声明；清理后按依赖顺序追加，避免 embed 解析到错误的 ABI。
 if [[ -n "${TYPE_CURL_MODULE:-}" || -n "${TYPE_SWOOLE_MODULE:-}" ]]; then
