@@ -76,13 +76,9 @@ task_cli_d="$GITHUB_WORKSPACE/.cache/typeapp-php.d"
 mkdir -p "$task_cli_d"
 printf 'extension=%s\n' "$task_socket_module" > "$task_cli_d/00-typeapp-sockets.ini"
 printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" > "$task_cli_d/zz-typeapp-swoole.ini"
-task_original_scan="${PHP_INI_SCAN_DIR:-}"
+# task_ini 已经合并了本轮需要的 PDO、curl、Redis、pcntl 等声明；关闭原始
+# 扫描目录，确保 sockets 与 Swoole 只在同一目录按 00/zz 顺序装载。
 task_scan="$task_cli_d"
-if [[ -n "$task_original_scan" ]]; then
-    # PHP 扩展按扫描目录顺序装载；原始目录必须先于 Swoole 目录，
-    # 以便 sockets 提供 socket_ce 后再解析 Swoole 的依赖。
-    task_scan="$task_original_scan:$task_cli_d"
-fi
 printf 'PHP_INI_SCAN_DIR=%s\n' "$task_scan" >> "$GITHUB_ENV"
 export PHP_INI_SCAN_DIR="$task_scan"
 # 公开消费者直接安装依赖，不忽略所需扩展；错误在大规模编译前暴露。
