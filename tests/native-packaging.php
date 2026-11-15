@@ -104,9 +104,12 @@ try {
         $extensionDirectory = (string)ini_get('extension_dir');
         $aliasDirectory = $work . '/extension-alias';
         expect(symlink($extensionDirectory, $aliasDirectory), '无法建立扩展目录别名');
+        expect(mkdir($work . '/php.d'), '无法准备运行扩展扫描目录');
+        foreach (glob(dirname($nativeIni) . '/php.d/*.ini') ?: [] as $scan) {
+            expect(copy($scan, $work . '/php.d/' . basename($scan)), '无法复制运行扩展扫描配置');
+        }
         $inputIni = preg_replace('/^\s*extension_dir\s*=.*$/mi', '', $inputIni);
         file_put_contents($unsafeIni, $inputIni . "\nextension_dir=\"" . $aliasDirectory . "\"\n; packaging-comment-sentinel\nunknown_application_setting=packaging-value-sentinel\n");
-        mkdir($work . '/php.d');
         expect(symlink(dirname($nativeIni) . '/probe', $work . '/probe'), '无法复用真实 embed 探测程序');
         file_put_contents($generation . '/not-declared.txt', 'unapproved');
         $old = $artifact . '.resources/' . str_repeat('b', 64);
