@@ -14,7 +14,9 @@ use Type\Core\Http\Attribute\Route;
 use Type\Core\Http\HttpError;
 use Type\Core\Http\Identity;
 use Type\Core\Http\Message\Factory;
+use Type\Core\Http\RequestBody;
 use Type\Orm\Db;
+use Type\Validate\Input;
 
 /**
  * 当前客户品牌和默认界面配置独立维护；平台只能维护公共登录与新客户初始模板。
@@ -49,14 +51,11 @@ final class SystemController
         $identity = $this->identity($request);
         $realm = (string)$identity->attributes()['realm'];
         $settingsRealm = $realm === 'system' ? 'system' : 'system-default';
+        $body = Input::json(RequestBody::read($request->getBody(), 32768), 32768, 12)->source('body');
         $input = \_vali([
             ..._version(),
-        ], 'body');
-        $parsed = $request->getParsedBody();
-        $changes = is_array($parsed) ? ($parsed['changes'] ?? null) : null;
-        if ($changes instanceof \stdClass) {
-            $changes = get_object_vars($changes);
-        }
+        ], $body);
+        $changes = $body['changes'] ?? null;
         if (!is_array($changes)) {
             throw new \Type\Validate\ValidationException(['changes' => ['type_object']]);
         }
