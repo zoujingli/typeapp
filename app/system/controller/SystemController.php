@@ -56,6 +56,9 @@ final class SystemController
             ..._version(),
         ], $body);
         $changes = $body['changes'] ?? null;
+        if ($changes instanceof \stdClass) {
+            $changes = get_object_vars($changes);
+        }
         if (!is_array($changes)) {
             throw new \Type\Validate\ValidationException(['changes' => ['type_object']]);
         }
