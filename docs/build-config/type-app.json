@@ -272,6 +272,18 @@
         ]
       },
       {
+        "id": "command.app:upgrade",
+        "class": "app\\common\\bootstrap\\ManagementCommand",
+        "arguments": [
+          {
+            "service": "application.context"
+          },
+          {
+            "value": "app:upgrade"
+          }
+        ]
+      },
+      {
         "id": "command.app:schedule",
         "class": "app\\common\\bootstrap\\ManagementCommand",
         "arguments": [
@@ -539,6 +551,10 @@
       {
         "name": "web:install",
         "service": "command.web:install"
+      },
+      {
+        "name": "app:upgrade",
+        "service": "command.app:upgrade"
       },
       {
         "name": "app:schedule",

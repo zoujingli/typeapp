@@ -146,6 +146,36 @@ final class ManagementCommand implements Command
                 echo json_encode($assets->install(in_array('--force', $options, true), in_array('--dry-run', $options, true)), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) . "\n";
                 return 0;
             }
+            if ($command === 'app:upgrade') {
+                $options = array_slice($arguments, 2);
+                if (array_diff($options, ['--force', '--dry-run']) !== [] || count($options) !== count(array_unique($options))) {
+                    throw new \InvalidArgumentException('用法：app:upgrade [--force] [--dry-run]');
+                }
+                $basePath = $this->context->basePath;
+                $settings = $this->context->settings();
+                DatabaseFactory::requireExisting($settings, $basePath);
+                $dryRun = in_array('--dry-run', $options, true);
+                $force = in_array('--force', $options, true);
+                // 迁移计划和前端资源均来自当前二进制；只在迁移成功后提交页面。
+                $migrationOutput = '';
+                ob_start();
+                try {
+                    $migrationStatus = self::migrate($settings, $basePath, [$dryRun ? 'status' : 'up'], $development);
+                } finally {
+                    $migrationOutput = trim((string)ob_get_clean());
+                }
+                if ($migrationStatus !== 0) {
+                    if ($migrationOutput !== '') {
+                        echo $migrationOutput . PHP_EOL;
+                    }
+                    return $migrationStatus;
+                }
+                $assets = FrontendAssets::application($basePath, $development);
+                $frontend = $assets->install($force, $dryRun);
+                $migration = $migrationOutput === '' ? null : json_decode($migrationOutput, true, 128, JSON_THROW_ON_ERROR);
+                echo json_encode(['migration' => $migration, 'frontend' => $frontend], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL;
+                return 0;
+            }
             if ($command === 'app:install') {
                 $basePath = $this->context->basePath;
                 $settings = $this->context->settings();
@@ -231,7 +261,7 @@ final class ManagementCommand implements Command
                 || (in_array($command, ['center:wal', 'center:backup', 'center:recovery'], true) && preg_match('/^recovery_[a-z_]+$/D', $message) === 1)
                 || $message === 'recovery_isolated'
                 ? $message : 'internal_error';
-            if ($command === 'app:install') {
+            if (in_array($command, ['app:install', 'app:upgrade'], true)) {
                 if ($error instanceof MigrationException && preg_match('/^TYPE_MIGRATION_[A-Z_]+/', $message, $matched) === 1) {
                     $publicMessage = $matched[0];
                 } elseif ($error instanceof HttpError) {
@@ -314,6 +344,7 @@ final class ManagementCommand implements Command
             'center:mqtt-store', 'broker:store' => $arguments === ['--store-worker-pipe'],
             'config:check' => !in_array('--remember', $arguments, true),
             'web:install' => in_array('--dry-run', $arguments, true),
+            'app:upgrade' => in_array('--dry-run', $arguments, true),
             'app:schedule' => $arguments === [] || in_array($arguments[0] ?? '', ['help', 'history'], true),
             'migrate' => in_array($arguments[0] ?? 'help', ['help', 'status', 'history'], true),
             'center:recovery' => in_array($arguments[0] ?? '', ['snapshot', 'status', 'gate'], true),
@@ -705,7 +736,7 @@ final class ManagementCommand implements Command
     }
 
     /**
-     * @param list<string> $worker 显式同步存储命令；查询只返回有界节点元数据。
+     * @param list<string> $worker 显式同步存储命令；查询只返回有界节点元数据
      */
     private static function brokerNodes(array $worker): void
     {

@@ -322,7 +322,7 @@ try {
     expect($snapshot['version'] === 1 && $snapshot['records'] !== [], '新安装的独立身份无法导出恢复核对清单');
     $recovered = json_decode(successful([PHP_BINARY, __DIR__ . '/fixtures/tenant-recovery.php'], $root, $environment), true, 32, JSON_THROW_ON_ERROR);
     expect($recovered['state'] === 'ready', '统一应用身份恢复核对没有闭环');
-    foreach (['broker:install', 'broker:user', 'broker:serve', 'broker:migrate', 'broker:recovery', 'broker:audit-clean', 'app:upgrade'] as $removed) {
+    foreach (['broker:install', 'broker:user', 'broker:serve', 'broker:migrate', 'broker:recovery', 'broker:audit-clean'] as $removed) {
         $legacy = new Process([...$command, $removed], $root, $environment);
         try {
             $rejected = $legacy->wait(10);

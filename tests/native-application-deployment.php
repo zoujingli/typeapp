@@ -133,6 +133,8 @@ function verifyNativeApplicationDeployment(string $project, string $package, str
                 $web = (new Process([...$command, ...$arguments], $base, $environment))->wait(30);
                 expect($web->successful(), '部署前端重复安装失败：' . $web->stderr);
             }
+            $upgrade = (new Process([...$command, 'app:upgrade', '--dry-run', '--force'], $base, $environment))->wait(30);
+            expect($upgrade->successful(), '二进制内置升级预览失败：' . $upgrade->stderr);
             expect(file_get_contents($runtime . '/public/uploads/retained.txt') === 'upload', '更新删除了上传文件');
         }
 
