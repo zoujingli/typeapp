@@ -15,7 +15,7 @@ final class {{name}}
     public function page(): array
     {
         $result = [];
-        foreach ({{modelName}}::query()->orderBy('id')->limit(20)->get() as $record) {
+        foreach ({{modelName}}::query()->order('id')->limit(20)->get() as $record) {
             if (!$record instanceof {{modelName}}) {
                 throw new ModelException('invalid_hydration', '查询没有返回声明的业务模型');
             }

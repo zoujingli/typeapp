@@ -56,7 +56,7 @@ final class MutationExercise
             self::integerArithmetic($connection);
             $base = MutationRecord::query();
             self::storageEdges($connection, $base);
-            $offset = $base->orderBy('id')->limit(3, 1);
+            $offset = $base->order('id')->limit(3, 1);
             self::check($offset->get()[0]->id === 2 && $offset->first()->id === 2 && $offset->firstOrFail()->id === 2
                 && $base->find(2)->id === 2 && $base->limit(1, 1)->find(2) === null, 'first 或主键查询丢失偏移');
             $alias = MutationRecord::query('r')->order('value')->select(['title']);
@@ -575,7 +575,7 @@ final class MutationExercise
             && self::reject(static fn (): int => $query->insertMany([array_replace($row, ['id' => 10]), array_replace($row, ['id' => 11, 'optional' => null])]), 'inconsistent_insert_fields')
             && self::reject(static fn (): int => $query->insertMany(['record' => $row]), 'invalid_insert_rows'), '批量输入、字段集合或租户校验缺失');
         self::check(self::reject(static fn (): int => $query->where('id', '=', 10)->insertMany([]))
-            && self::reject(static fn (): int => $query->orderBy('id')->insertMany([]))
+            && self::reject(static fn (): int => $query->order('id')->insertMany([]))
             && self::reject(static fn (): int => $query->limit(1)->insertMany([]))
             && self::reject(static fn (): int => $query->select(['title'])->insertMany([]), 'invalid_insert_query')
             && self::reject(static fn (): int => $query->withTrashed()->insertMany([]), 'invalid_insert_query'), '空批次静默丢弃非插入查询状态');

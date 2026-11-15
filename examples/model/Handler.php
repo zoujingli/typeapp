@@ -75,7 +75,7 @@ final class Handler implements RequestHandlerInterface
                     $result = ['data' => $user->project($fields, $relationFields)];
                 } else {
                     $result = ['data' => []];
-                    foreach ($query->orderBy('id')->limit(100)->get() as $user) {
+                    foreach ($query->order('id')->limit(100)->get() as $user) {
                         $result['data'][] = $user->project($fields, $relationFields);
                     }
                 }

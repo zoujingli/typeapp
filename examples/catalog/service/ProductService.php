@@ -30,7 +30,7 @@ final class ProductService
             'name' => static fn (ModelQuery $query, mixed $value): ModelQuery => $query->where('name', '=', $value),
         ]);
         $result = [];
-        foreach ($query->orderBy('id')->limit(20)->get() as $record) {
+        foreach ($query->order('id')->limit(20)->get() as $record) {
             if (!$record instanceof Product) {
                 throw new ModelException('invalid_hydration', '商品映射无效');
             }
