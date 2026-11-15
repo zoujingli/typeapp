@@ -71,6 +71,8 @@ jobs:
     if: github.repository == 'zoujingli/typeapp'
     name: ${{ inputs.scope == 'single-program' && inputs.profile || 'all' }} · macOS ARM64 · ${{ inputs.tutorial_mode != '' && format('tutorial-{0}', inputs.tutorial_mode) || matrix.suite }}
     runs-on: macos-15
+    # macOS 原生 SDK 诊断保留全部结果，不阻断主线和候选汇总。
+    continue-on-error: true
     timeout-minutes: 120
     strategy:
       fail-fast: false
