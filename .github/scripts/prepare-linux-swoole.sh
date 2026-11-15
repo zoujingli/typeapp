@@ -108,8 +108,7 @@ composer check-platform-reqs --no-interaction
 # 同时加载对应的 PHP 动态驱动，否则静态入口会重复注册 PDO 常量。CLI 继续沿用
 # 原始 PHP 配置和完整驱动集合，Composer 与源码测试仍可验证全部平台依赖。
 task_clean="$(mktemp)"
-awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*(swoole|pdo_pgsql|pdo_sqlite)/' "$task_ini" > "$task_clean"
-printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" >> "$task_clean"
+awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*(pdo_pgsql|pdo_sqlite)/' "$task_ini" > "$task_clean"
 mv "$task_clean" "$task_ini"
 # 后续步骤和 AOT 消费者统一使用去重后的运行配置及受控扫描目录。扫描目录
 # 仍需保留 sockets、Redis、curl 与 Swoole 的单一声明；清空它会让 Swoole
