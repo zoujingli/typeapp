@@ -200,6 +200,17 @@ jobs:
           if [[ -n "$task_tokenizer_module" ]]; then
             printf 'extension=%s\n' "$task_tokenizer_module" >> "$task_control/php.ini"
           fi
+          # Swoole 的 socket_ce 来自 PHP sockets 扩展；静态发布关闭默认
+          # 扫描目录时必须显式先加载同一 SDK 的 sockets，再加载 Swoole。
+          task_socket_module="$(php-config --extension-dir)/sockets.so"
+          if [[ -f "$task_socket_module" ]]; then
+            printf 'extension=%s\n' "$task_socket_module" >> "$task_control/php.ini"
+          else
+            [[ "$(php -r 'echo extension_loaded("sockets") ? "1" : "0";')" == "1" ]] || {
+              echo "缺少 PHP sockets 扩展：$task_socket_module" >&2
+              exit 1
+            }
+          fi
           printf 'extension=%s\n' "$task_module" >> "$task_control/php.ini"
           PHPRC="$task_control/php.ini" PHP_INI_SCAN_DIR="$task_control/php.d" php -r 'if (!extension_loaded("tokenizer") || !function_exists("token_get_all")) { fwrite(STDERR, "受控 PHP 缺少 tokenizer\n"); exit(1); } token_get_all("<?php echo 1;");'
           printf 'PHPX_HOME=%s\nPHPRC=%s/php.ini\nPHP_INI_SCAN_DIR=%s/php.d\nTYPE_SWOOLE_MODULE=%s\n' \
