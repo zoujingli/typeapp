@@ -49,15 +49,6 @@ task_hooks="$("${task_php_probe[@]}" "$task_hooks_script")"
 rm -f "$task_hooks_script"
 printf '受控 Swoole PDO 钩子：%s\n' "$task_hooks"
 [[ "$task_hooks" == hooks ]]
-# 公开消费者直接安装依赖，不忽略所需扩展；错误在大规模编译前暴露。
-composer check-platform-reqs --no-interaction
-# Swoole 的协程 PostgreSQL/SQLite 实现已经编入受控模块；AOT 运行配置不能再
-# 同时加载对应的 PHP 动态驱动，否则静态入口会重复注册 PDO 常量。CLI 继续沿用
-# 原始 PHP 配置和完整驱动集合，Composer 与源码测试仍可验证全部平台依赖。
-task_clean="$(mktemp)"
-awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*(swoole|pdo_pgsql|pdo_sqlite)/' "$task_ini" > "$task_clean"
-printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" >> "$task_clean"
-mv "$task_clean" "$task_ini"
 # 受控模块写入独立扫描目录；保留 setup-php 原扫描目录中的 PDO 等基础扩展。
 task_cli_d="$GITHUB_WORKSPACE/.cache/typeapp-php.d"
 mkdir -p "$task_cli_d"
@@ -69,4 +60,13 @@ if [[ -n "$task_original_scan" ]]; then
 fi
 printf 'PHP_INI_SCAN_DIR=%s\n' "$task_scan" >> "$GITHUB_ENV"
 export PHP_INI_SCAN_DIR="$task_scan"
+# 公开消费者直接安装依赖，不忽略所需扩展；错误在大规模编译前暴露。
+composer check-platform-reqs --no-interaction
+# Swoole 的协程 PostgreSQL/SQLite 实现已经编入受控模块；AOT 运行配置不能再
+# 同时加载对应的 PHP 动态驱动，否则静态入口会重复注册 PDO 常量。CLI 继续沿用
+# 原始 PHP 配置和完整驱动集合，Composer 与源码测试仍可验证全部平台依赖。
+task_clean="$(mktemp)"
+awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*(swoole|pdo_pgsql|pdo_sqlite)/' "$task_ini" > "$task_clean"
+printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" >> "$task_clean"
+mv "$task_clean" "$task_ini"
 php -m | grep -qx swoole
