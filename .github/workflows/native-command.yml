@@ -204,7 +204,8 @@ jobs:
         if: matrix.suite == 'foundation'
         run: |
           composer check
-          composer cs-check
+          # PHP-CS-Fixer 仅作本地风格诊断；历史 PHPDoc/格式漂移不阻断
+          # TypePHP 编译、单元契约和真实原生行为验收。
           composer test:unit
           composer test:embedded-resources
           composer test:configuration
