@@ -115,7 +115,8 @@ try {
         $headers = ['Authorization' => 'Bearer ' . $environment['APP_API_TOKEN'], 'Content-Type' => 'application/json'];
         expect($client->request('GET', '/products')->status === 401, '生成模块遗漏鉴权');
         $created = $client->request('POST', '/products', $headers, '{"name":"First","id":999,"tenant":"forged"}');
-        expect($created->status === 201, '模块创建失败：' . $created->body);
+        $diagnostics = substr($process->stdout() . $process->stderr(), -8192);
+        expect($created->status === 201, '模块创建失败：' . $created->body . ($diagnostics === '' ? '' : '；服务诊断：' . $diagnostics));
         $record = $created->json();
         expect($record['name'] === 'First' && $record['id'] !== 999 && !isset($record['tenant']), '响应或身份字段没有白名单');
         $id = $record['id'];

@@ -118,9 +118,9 @@ final class Scaffolder
             $name = $parts['name'];
             $classes = ['model' => $base . '\model\\' . $name,
                 'service' => $base . '\service\\' . $name . 'Service', 'controller' => $base . '\controller\\' . $name . 'Controller'];
-            $variables += ['model' => $classes['model'], 'modelName' => $name, 'service' => $classes['service'], 'serviceName' => $name . 'Service',
-                'description' => '创建 ' . $variables['table']];
             $variables = $this->variables($variables, $options);
+            $variables += ['model' => $classes['model'], 'modelName' => $name, 'service' => $classes['service'], 'serviceName' => $name . 'Service'];
+            $variables['description'] = '创建 ' . $variables['table'];
             foreach ($classes as $type => $target) {
                 $path = $this->classFile($root, $composer, $target);
                 $files[$path] = $this->render($type, array_replace($variables, $this->classParts($target)));
