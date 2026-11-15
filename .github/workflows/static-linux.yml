@@ -146,7 +146,7 @@ jobs:
           path: |
             .cache/php-sdk/8.5.12-zts
             .cache/php-sdk-build/8.5.12-zts
-          key: locked-php-8.5.12-zts-${{ runner.os }}-${{ runner.arch }}-v6
+          key: locked-php-8.5.12-zts-${{ runner.os }}-${{ runner.arch }}-v7
       - name: 准备锁定宿主与原生静态依赖
         run: |
           set -euo pipefail

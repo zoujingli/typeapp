@@ -22,7 +22,8 @@ if [[ -x "$task_prefix/bin/php" && -x "$task_prefix/bin/php-config" ]]; then
   printf 'memory_limit=2G\ndisplay_errors=1\n' > "$task_prefix/etc/php.d/zz-typeapp-cli.ini"
   task_version="$("$task_prefix/bin/php" -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";' 2>/dev/null)"
   if [[ "$task_version" == "${task_lock_php} zts" && -f "$task_prefix/lib/libphp.so" \
-    && -f "$("$task_prefix/bin/php-config" --extension-dir)/curl.so" ]] \
+    && -f "$("$task_prefix/bin/php-config" --extension-dir)/curl.so" \
+    && -f "$("$task_prefix/bin/php-config" --extension-dir)/sockets.so" ]] \
     && "$task_prefix/bin/php" -r 'exit(extension_loaded("ctype") && function_exists("ctype_digit") && extension_loaded("redis") && phpversion("redis")==="6.3.0" && extension_loaded("curl") && extension_loaded("pdo_mysql") && extension_loaded("pdo_pgsql") && extension_loaded("pdo_sqlite") ? 0 : 1);' 2>/dev/null; then
     printf '%s\n' "$task_prefix"
     exit 0
@@ -58,7 +59,7 @@ sudo apt-get install --yes --no-install-recommends \
     --enable-session \
     --with-libxml --enable-dom --enable-xml --enable-simplexml --enable-xmlreader --enable-xmlwriter \
     --enable-phar --enable-pdo --enable-mysqlnd --with-pdo-mysql=mysqlnd --with-pdo-pgsql \
-    --with-pdo-sqlite --with-sqlite3 --enable-pcntl --enable-posix --enable-sockets \
+    --with-pdo-sqlite --with-sqlite3 --enable-pcntl --enable-posix --enable-sockets=shared \
     --with-openssl --with-curl=shared --with-zlib --with-zip --with-iconv
   make -j"$(nproc)"
   make install
@@ -68,6 +69,7 @@ mkdir -p "$task_prefix/etc/php.d"
 if [[ -f "$("$task_prefix/bin/php-config" --extension-dir)/curl.so" ]]; then
   printf 'extension=curl.so\n' > "$task_prefix/etc/php.d/curl.ini"
 fi
+printf 'extension=sockets.so\n' > "$task_prefix/etc/php.d/sockets.ini"
 printf 'memory_limit=2G\ndisplay_errors=1\n' > "$task_prefix/etc/php.d/zz-typeapp-cli.ini"
 
 task_version="$("$task_prefix/bin/php" -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : " nts";')"
@@ -81,6 +83,10 @@ task_version="$("$task_prefix/bin/php" -r 'echo PHP_VERSION, PHP_ZTS ? " zts" : 
 }
 [[ -f "$("$task_prefix/bin/php-config" --extension-dir)/curl.so" ]] || {
   printf '锁定 PHP 缺少 curl.so\n' >&2
+  exit 1
+}
+[[ -f "$("$task_prefix/bin/php-config" --extension-dir)/sockets.so" ]] || {
+  printf '锁定 PHP 缺少 sockets.so\n' >&2
   exit 1
 }
 

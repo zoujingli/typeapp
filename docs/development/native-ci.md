@@ -44,6 +44,8 @@ macOS选择GitHub标准`macos-15` ARM64标签，不使用Docker或WSL运行应�
 
 `configure-toolchain.php`共用Linux/macOS显式SDK选择，分别核对libphp.so/libphp.dylib；包装器绑定准确二进制、头文件和embed库。`verify-toolchain.php`可显式选择linux/macos/windows，默认沿用锁文件的主要平台。`prepare-toolchain.sh`按本机Unix平台构建PHPX。CI将PHPX源码复制到新的build目录，排除旧目标文件，不覆盖既有SDK或其他平台产物。
 
+锁定 PHP SDK 将 sockets 作为共享扩展构建并写入独立扫描目录；Swoole 的动态模块依赖 `socket_ce`，因此 embed 配置在加载 Swoole 前固定 sockets 声明。SDK 缓存键随该 ABI 装配规则递增，旧的静态 sockets SDK 不再复用。
+
 SDK选择器也接受可选的`扩展名=模块绝对路径`参数，例如`pcntl=/专用构建目录/pcntl.so`。它生成独立扩展目录，保留原SDK的其他模块，将所有候选路径与SHA256纳入SDK身份；模块以无覆盖的完整副本保存，避免外部软链接越过构建身份边界。重复名称、无效原生格式、副本/链接篡改均拒绝。补充模块不会安装到原PHP目录，也不会修改业务构建JSON；真实ABI、版本和函数仍由`RuntimeProfile`的embed探针验证，文件存在不等于可用。
 
 macOS契约组覆盖配置、快捷接口、操作生成、进程信号、真实watch及平台身份；HTTP专项使用Swoole；应用组覆盖三库开发/原生物联中心标准项目、缓存对照和空目录接入；部署组覆盖发布搬迁/校验、归档、launchd生命周期及SQLite接入发布。上述为工作流配置范围，实际通过项须引用对应运行结果。

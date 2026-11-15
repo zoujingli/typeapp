@@ -55,12 +55,13 @@ if [[ ! -d "$task_work/php-$task_version" ]]; then tar -xJf "$task_archive" -C "
     --enable-filter --enable-tokenizer --enable-ctype --enable-mbstring --disable-mbregex --enable-session \
     --with-libxml --enable-dom --enable-xml --enable-simplexml --enable-xmlreader --enable-xmlwriter \
     --enable-phar --enable-pdo --enable-mysqlnd --with-pdo-mysql=mysqlnd --with-pdo-pgsql \
-    --with-pdo-sqlite --with-sqlite3 --enable-pcntl --enable-posix --enable-sockets \
+    --with-pdo-sqlite --with-sqlite3 --enable-pcntl --enable-posix --enable-sockets=shared \
     --with-openssl --with-curl=shared --with-zlib --with-zip --with-iconv="$task_sdk/usr"
   make -j2
   make install
 ) >&2
 printf 'extension=curl.so\n' > "$task_prefix/etc/php.d/curl.ini"
+printf 'extension=sockets.so\n' > "$task_prefix/etc/php.d/sockets.ini"
 printf 'memory_limit=2G\ndisplay_errors=1\ndate.timezone=UTC\n' > "$task_prefix/etc/php.d/cli.ini"
 
 task_redis_archive="$task_work/redis-6.3.0.tgz"
