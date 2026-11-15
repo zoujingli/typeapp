@@ -451,7 +451,7 @@ final class MutationExercise
             'deleted_at' => new ModelField('deleted_at', 'datetime', true, false, true, false),
             'version' => new ModelField('version', 'integer', false, false, true, false),
             'optional' => new ModelField('optional_note', 'string', true, true, true, false),
-        ], false, 'deleted_at', 'version');
+        ], false, 'deleted_at', 'version', tenant: 'tenant_id');
         $query = new ModelQuery($definition, static fn (array $row): MappingProbe => new MappingProbe($definition, $row));
         $row = ['id' => 1, 'title' => ' alpha ', 'quantity' => 2, 'amount' => '99.99', 'large' => '9007199254740993',
             'occurred_at' => new \DateTimeImmutable('2026-10-04T08:30:01.123456+08:00')];
