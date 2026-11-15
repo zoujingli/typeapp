@@ -45,7 +45,7 @@ $source = realpath($argv[1] ?? $root . '/build/native/type-app');
 expect($source !== false, '需要现有的 TypePHP 原生产物');
 $work = $root . '/build/packaging-check-' . bin2hex(random_bytes(6));
 expect(mkdir($work, 0700, true), '无法创建独立打包回归目录');
-$nativeIni = getenv('TYPE_NATIVE_PHP_INI') ?: $root . '/.cache/embed-runtime/8.5.10/php.ini';
+$nativeIni = getenv('TYPE_NATIVE_PHP_INI') ?: $root . '/.cache/embed-runtime/8.5.12/php.ini';
 try {
     $artifact = packagingArtifact($source, $work, [['target' => 'message.txt', 'sha256' => hash('sha256', 'approved')]]);
     $generation = $artifact . '.resources/' . str_repeat('a', 64);

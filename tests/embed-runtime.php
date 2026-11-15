@@ -18,7 +18,7 @@ function embedExpectReady(string $probe, string $directory): void
 }
 
 $root = dirname(__DIR__);
-expect(PHP_OS_FAMILY === 'Linux' && PHP_VERSION === '8.5.10' && PHP_ZTS, 'embed 验收必须使用锁定 Linux PHP ZTS');
+expect(PHP_OS_FAMILY === 'Linux' && PHP_VERSION === '8.5.12' && PHP_ZTS, 'embed 验收必须使用锁定 Linux PHP ZTS');
 $sdk = getenv('PHP_HOME');
 expect($sdk !== false && is_file($sdk . '/lib/libphp.so'), '需要当前 PHP embed SDK');
 $prepared = trim(successful(['bash', $root . '/tools/prepare-embed-runtime.sh']));

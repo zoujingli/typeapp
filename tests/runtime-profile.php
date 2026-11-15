@@ -124,12 +124,12 @@ $skipped = $profile->prepare($root, $base . '/inactive', $phpHome, $phpxHome, ['
 expect($skipped['module-files'] === [], '非当前平台或内置扩展的候选被不必要地加载');
 $checks[] = 'inactive-platform-and-builtin-fallback-not-read';
 if (PHP_OS_FAMILY === 'Linux') {
-    $module = getenv('TYPE_TEST_PCNTL_MODULE') ?: $root . '/.cache/embed-runtime/8.5.10/pcntl.so';
+    $module = getenv('TYPE_TEST_PCNTL_MODULE') ?: $root . '/.cache/embed-runtime/8.5.12/pcntl.so';
     expect(is_file($module), 'Linux对照需要已经按锁定SDK编译的共享PCNTL');
     $definition = ['Linux' => ['extensions' => ['pcntl'], 'functions' => ['pcntl_signal', 'pcntl_async_signals', 'pcntl_fork'],
         'modules' => ['pcntl' => ['file' => $module, 'sha256' => hash_file('sha256', $module)]]]];
     $resolved = $profile->prepare($root, $base . '/pcntl', $phpHome, $phpxHome, ['json'], $definition);
-    expect($resolved['extensions']['pcntl'] === '8.5.10', '实际embed PCNTL版本不符');
+    expect($resolved['extensions']['pcntl'] === '8.5.12', '实际embed PCNTL版本不符');
     $inventory = json_decode(file_get_contents($base . '/pcntl/profile.json'), true, 512, JSON_THROW_ON_ERROR);
     if (!isset($inventory['base-extensions']['pcntl'])) {
         expect(isset($resolved['module-files']['pcntl']), '未内置PCNTL的embed没有选择共享模块');
