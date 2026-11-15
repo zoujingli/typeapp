@@ -122,14 +122,11 @@ final class DevelopmentBuilder
             // Composer 的 once 保护，尤其在开发代次保留原函数文件时会造成重复声明。
             foreach (array_keys($loadFiles) as $file) {
                 if (isset($composerFilePaths[BuildPlatform::resolve($file)])) {
-                    if (!isset($replaced[BuildPlatform::resolve($file)])) {
-                        unset($loadFiles[$file]);
-                        // 构建 bootstrap 已按唯一清单加载该 Composer files 入口；
-                        // 告知 Composer，避免开发代次加载阶段再次执行同一函数文件。
+                    if (isset($replaced[BuildPlatform::resolve($file)])) {
+                        // 生成代次替换了 Composer files 入口时，阻止 Composer
+                        // 之后重新加载原文件；普通入口继续由 require_once 加载。
                         $GLOBALS['__composer_autoload_files'][$composerFilePaths[BuildPlatform::resolve($file)]] = true;
-                        continue;
                     }
-                    $GLOBALS['__composer_autoload_files'][$composerFilePaths[BuildPlatform::resolve($file)]] = true;
                 }
                 require_once $file;
             }
