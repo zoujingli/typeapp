@@ -11,11 +11,10 @@ read -r -a task_includes <<< "$("$task_sdk/bin/php-config" --includes)"
 cc "${task_includes[@]}" "$task_root/tools/embed-runtime-probe.c" -L"$task_sdk/lib" -Wl,-rpath,"$task_sdk/lib" -lphp -o "$task_work/probe"
 # 配置生成器不能继承原生验收临时扫描目录；否则重复准备会把受控模块
 # 再次写入主 php.ini，第二次探针就会报告 sockets/Redis/curl/Swoole 重复加载。
-task_configure_env=(env PHP_INI_SCAN_DIR=)
 if [[ -n "${TYPE_NATIVE_PHP_INI:-}" && -f "$TYPE_NATIVE_PHP_INI" ]]; then
-  task_configure_env+=("PHPRC=$TYPE_NATIVE_PHP_INI")
+  task_configure_env=(env "PHPRC=$TYPE_NATIVE_PHP_INI" PHP_INI_SCAN_DIR=)
 else
-  task_configure_env+=(-u PHPRC)
+  task_configure_env=(env -u PHPRC PHP_INI_SCAN_DIR=)
 fi
 "${task_configure_env[@]}" "$task_sdk/bin/php" "$task_root/tools/configure-embed-runtime.php" "$task_work" base >/dev/null
 
