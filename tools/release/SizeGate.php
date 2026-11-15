@@ -24,7 +24,10 @@ final class SizeGate
                 || preg_match('/^[a-f0-9]{40}$/D', $baseline['source'] ?? '') !== 1) {
                 throw new \RuntimeException('体积基线版本或源码身份无效');
             }
-            Candidate::assertMatrix($baseline['programs'] ?? []);
+            $baselinePrograms = $baseline['programs'] ?? null;
+            if (!is_array($baselinePrograms) || array_diff(Candidate::matrix(), array_keys($baselinePrograms)) !== []) {
+                throw new \RuntimeException('体积基线缺少当前发布平台与 profile');
+            }
         }
         $comparisons = [];
         foreach ($programs as $key => $record) {

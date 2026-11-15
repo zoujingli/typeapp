@@ -86,7 +86,7 @@ final class TutorialEvidence
         return $report;
     }
 
-    /** 发布必须回读同轮四平台十二个原始profile报告，不能以单平台结果替代矩阵。 */
+    /** 发布必须回读同轮三平台九个原始profile报告，不能以单平台结果替代矩阵。 */
     public static function matrix(string $file, string $source, string $channel, ?string $version, array $items, string $run, string $attempt): array
     {
         $report = self::read($file);
@@ -97,7 +97,7 @@ final class TutorialEvidence
             throw new \RuntimeException('教程矩阵来源、版本或执行轮次不一致');
         }
         $expected = [];
-        foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
+        foreach (['linux-x64', 'linux-arm64', 'macos-arm64'] as $platform) {
             foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
                 $expected[] = $platform . '/' . $driver;
             }
@@ -106,7 +106,7 @@ final class TutorialEvidence
         sort($expected);
         sort($actual);
         if ($actual !== $expected) {
-            throw new \RuntimeException('教程矩阵缺少四平台十二个profile');
+            throw new \RuntimeException('教程矩阵缺少三平台九个profile');
         }
         $paths = [];
         foreach ($report['reports'] as $key => $entry) {

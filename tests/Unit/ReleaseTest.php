@@ -113,7 +113,13 @@ final class ReleaseTest extends TestCase
         try {
             self::assertSame($name, Candidate::verify($record, $root, $source, $version, 'macos-arm64'));
             self::assertSame($name, Candidate::sealedFilename($record));
-            self::assertSame('typeapp-iot-1.0.0-rc.8-windows-x64.exe', Candidate::filename($version, 'windows-x64'));
+            $invalid = false;
+            try {
+                Candidate::filename($version, 'windows-x64');
+            } catch (\InvalidArgumentException) {
+                $invalid = true;
+            }
+            self::assertTrue($invalid, 'Windows 不应进入当前 RC 候选');
             $broken = [];
             $broken[] = array_replace($record, ['protocol' => 1, 'delivery' => 'native-directory-archive']);
             $broken[] = array_replace($record, ['source' => str_repeat('b', 40)]);
@@ -155,13 +161,13 @@ final class ReleaseTest extends TestCase
         }
     }
 
-    /** 新发布必须完整覆盖 12 个单文件组合；公开附件不应带重建 SDK。 */
+    /** 新发布必须完整覆盖 9 个单文件组合；公开附件不应带重建 SDK。 */
     public function testProfileMatrixAndPublicAttachmentsAreExplicitlyBounded(): void
     {
         $root = dirname(__DIR__, 2) . '/build/profile-candidate-' . bin2hex(random_bytes(6));
         mkdir($root, 0700);
         try {
-            self::assertCount(12, Candidate::matrix());
+            self::assertCount(9, Candidate::matrix());
             $records = [];
             foreach (Candidate::matrix() as $key) {
                 $records[$key] = ['profile' => substr($key, strrpos($key, '-') + 1)];
@@ -453,10 +459,10 @@ final class ReleaseTest extends TestCase
             'head_repository' => ['full_name' => 'zoujingli/typeapp'], 'path' => '.github/workflows/release.yml', 'event' => 'push', 'status' => 'in_progress'];
         $names = ['distribute / plan', 'distribute / collect', 'distribute / consume', 'template / template'];
         if ($kind === 'native') {
-            $names = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete', 'linux-arm64 / linux-arm64-complete', 'windows-x64 / windows'];
+            $names = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete', 'linux-arm64 / linux-arm64-complete'];
             foreach (['sqlite', 'mysql', 'pgsql'] as $profile) {
                 $names = [...$names, $profile . ' · 静态单程序 · linux-x64', $profile . ' · 静态单程序 · linux-arm64',
-                    $profile . ' · macOS ARM64 · single-program', $profile . ' · Windows x64 单程序'];
+                    $profile . ' · macOS ARM64 · single-program'];
             }
             foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers', 'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services', 'toolchain'] as $suite) {
                 $names[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;
@@ -475,7 +481,6 @@ final class ReleaseTest extends TestCase
                         'tutorial-' . $mode . ' / ' . $profile . ' · 教程单程序 · linux-x64',
                         'tutorial-' . $mode . ' / ' . $profile . ' · 教程单程序 · linux-arm64',
                         'tutorial-' . $mode . ' / ' . $profile . ' · macOS ARM64 · tutorial-' . $mode,
-                        'tutorial-' . $mode . ' / ' . $profile . ' · Windows x64 教程单程序',
                     ];
                 }
             }
@@ -497,7 +502,6 @@ final class ReleaseTest extends TestCase
             $platform = substr($change, strlen('missing-static-'));
             $missing = match ($platform) {
                 'macos-arm64' => 'sqlite · macOS ARM64 · single-program',
-                'windows-x64' => 'sqlite · Windows x64 单程序',
                 default => 'sqlite · 静态单程序 · ' . $platform,
             };
             $jobs['jobs'] = array_values(array_filter($jobs['jobs'], static fn (array $job): bool => $job['name'] !== $missing));
@@ -542,7 +546,7 @@ final class ReleaseTest extends TestCase
                 yield $kind . '-' . $change => [$kind, $change];
             }
         }
-        foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
+        foreach (['linux-x64', 'linux-arm64', 'macos-arm64'] as $platform) {
             yield 'missing-static-' . $platform => ['native', 'missing-static-' . $platform];
         }
         yield 'native-with-tutorials' => ['native', 'with-tutorials'];

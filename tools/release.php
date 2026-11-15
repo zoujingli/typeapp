@@ -87,7 +87,7 @@ try {
         if (($manifest['protocol'] ?? null) === 3) {
             if (($manifest['delivery'] ?? '') !== 'single-executable' || ($manifest['profiles'] ?? []) !== Candidate::PROFILES
                 || !is_array($records)) {
-                throw new RuntimeException('已封存候选缺少完整四平台×三 profile 矩阵');
+                throw new RuntimeException('已封存候选缺少完整三平台×三 profile 矩阵');
             }
             Candidate::assertMatrix($records);
         }
@@ -134,7 +134,7 @@ try {
                 Candidate::verify($record, $assets, $source, $version, $platform, $profile);
                 $frontend ??= $record['frontend-manifest-sha256'];
                 if ($frontend !== $record['frontend-manifest-sha256']) {
-                    throw new RuntimeException('12个 profile 前端不是同一冻结构建');
+                    throw new RuntimeException('9个 profile 前端不是同一冻结构建');
                 }
                 $manifest['programs'][$key] = $record;
                 foreach (Candidate::attachments($record, false) as $attachment) {
@@ -166,7 +166,7 @@ try {
         file_put_contents($assets . '/SHA256SUMS', $sums);
         $body = "TypeApp 物联中心 {$version}\n\n每个平台部署只需一个可执行程序及外置配置。TypePHP全量编译应用；PHP、PHPX、Swoole与非系统运行库静态链接，普通启动不释放运行库。\n\n"
             . "下载对应平台和数据库 profile 的程序，Unix系统赋予执行权限，准备外置配置后执行app:install；页面从程序安装到public。后续使用web:install --force更新托管页面。MySQL/PostgreSQL由外部服务提供，SQLite使用本地数据文件。默认告警、导出、队列和调度保留外部 Redis；DB_DRIVER 不匹配时程序拒绝启动。设备 MQTT 持久接入要求 pgsql profile 和相应同步后端。许可证由licenses命令读取。安装说明：https://iots.top/#/guide/deployment\n\n"
-            . "源码：{$source}。下载后先核对SHA256SUMS，四平台×三数据库 profile 的验收身份见release-manifest.json。\n\n"
+            . "源码：{$source}。下载后先核对SHA256SUMS，三平台×三数据库 profile 的验收身份见release-manifest.json。\n\n"
             . "重建 SDK、源码和许可证材料保存在 Actions Artifact，不属于部署下载项；部署只需对应 profile 的一个程序和外置配置。\n\n"
             . "<!-- typeapp-candidate source={$source} run={$run} attempt={$attempt} -->\n";
         $api->draft('zoujingli/typeapp', $version, $source, $body);
@@ -241,7 +241,7 @@ try {
         sort($expected);
         sort($actual);
         if ($actual !== $expected) {
-            throw new RuntimeException('公开 Release 只能包含 12 个主程序、SHA256SUMS 和 release-manifest.json');
+            throw new RuntimeException('公开 Release 只能包含 9 个主程序、SHA256SUMS 和 release-manifest.json');
         }
         Process::report($work . '/published.json', $api->publish('zoujingli/typeapp', $version) + ['source' => $source, 'children' => $receipt['items']]);
     } else {

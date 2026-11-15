@@ -32,7 +32,7 @@ try {
     $mapping = json_decode(Process::output(['git', 'show', $source . ':.github/distribution.json'], $root), true, 512, JSON_THROW_ON_ERROR);
     $plan = Batch::plan($root, $source, $mode === 'candidate' ? 'branch' : 'tag', $version ?? '', $mapping);
     $items = $plan['items'] + ['type-project' => ['split' => Process::output(['git', 'subtree', 'split', '--prefix=templates/type-project', '--ignore-joins', $source], $root)]];
-    foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
+    foreach (['linux-x64', 'linux-arm64', 'macos-arm64'] as $platform) {
         foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
             $path = 'inputs/tutorial-' . $mode . '-' . $platform . '-' . $driver . '-' . $attempt . '/verification.json';
             if (!is_file($directory . '/' . $path)) {
@@ -50,7 +50,7 @@ try {
     } finally {
         unlink($pending);
     }
-    echo "教程四平台十二profile原始证据核对通过。\n";
+    echo "教程三平台九profile原始证据核对通过。\n";
 } catch (Throwable $error) {
     if ($reportFile !== null) {
         $report['status'] = 'failed';

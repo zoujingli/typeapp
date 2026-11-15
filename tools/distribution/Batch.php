@@ -94,7 +94,7 @@ final class Batch
         return ['total_count' => $total, 'jobs' => $jobs];
     }
 
-    /** 发布链允许分发任务继续运行，但固定轮次的四平台完整验收必须已全部成功。 */
+    /** 发布链允许分发任务继续运行，但固定轮次的三平台完整验收必须已全部成功。 */
     public static function verifyReleaseEvidence(array $run, array $jobs, string $source, string $version, int $id, int $attempt): void
     {
         if (($run['id'] ?? null) !== $id || ($run['run_attempt'] ?? null) !== $attempt
@@ -106,7 +106,7 @@ final class Batch
             throw new \RuntimeException('发布原生验收的源码、标签、工作流或执行轮次不一致');
         }
         $required = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete',
-            'linux-arm64 / linux-arm64-complete', 'windows-x64 / windows'];
+            'linux-arm64 / linux-arm64-complete'];
         foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers',
             'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services', 'toolchain'] as $suite) {
             $required[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;
@@ -130,16 +130,15 @@ final class Batch
             $seen[$name] = true;
         }
         if (array_diff($required, array_keys($seen)) !== []) {
-            throw new \RuntimeException('发布缺少完整四平台原生验收任务');
+            throw new \RuntimeException('发布缺少完整三平台原生验收任务');
         }
 
         // 静态候选由可复用工作流的矩阵任务生成。profile 需要出现在任务名中，
-        // 否则 API 回执无法证明 12 个程序分别使用了对应数据库 SDK。
+        // 否则 API 回执无法证明 9 个程序分别使用了对应数据库 SDK。
         $staticJobs = [
             'linux-x64' => '静态单程序 · linux-x64',
             'linux-arm64' => '静态单程序 · linux-arm64',
             'macos-arm64' => 'macOS ARM64 · single-program',
-            'windows-x64' => 'Windows x64 单程序',
         ];
         foreach ($staticJobs as $platform => $label) {
             foreach (['sqlite', 'mysql', 'pgsql'] as $profile) {

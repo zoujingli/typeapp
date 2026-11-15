@@ -265,7 +265,7 @@ final class TutorialEvidenceTest extends TestCase
         $source = str_repeat('a', 40);
         $report = ['protocol' => 1, 'kind' => 'tutorial-delivery-matrix', 'status' => 'passed', 'source' => $source,
             'channel' => 'fixed-candidate', 'version' => null, 'run' => '123', 'attempt' => '2', 'reports' => []];
-        foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
+        foreach (['linux-x64', 'linux-arm64', 'macos-arm64'] as $platform) {
             foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
                 $report['reports'][$platform . '/' . $driver] = ['file' => 'missing.json', 'sha256' => str_repeat('a', 64)];
             }
@@ -281,7 +281,7 @@ final class TutorialEvidenceTest extends TestCase
                 $broken = $report;
                 unset($broken['reports'][$missing]);
                 file_put_contents($file, json_encode($broken, JSON_THROW_ON_ERROR));
-                $this->rejected(static fn () => TutorialEvidence::matrix($file, $source, 'fixed-candidate', null, [], '123', '2'), '教程矩阵缺少四平台十二个profile');
+                $this->rejected(static fn () => TutorialEvidence::matrix($file, $source, 'fixed-candidate', null, [], '123', '2'), '教程矩阵缺少三平台九个profile');
             }
             file_put_contents($file, json_encode($report, JSON_THROW_ON_ERROR));
             $this->rejected(static fn () => TutorialEvidence::matrix($file, $source, 'fixed-candidate', null, [], '123', '2'));
@@ -299,7 +299,7 @@ final class TutorialEvidenceTest extends TestCase
         $report = ['protocol' => 1, 'kind' => 'tutorial-delivery-matrix', 'status' => 'passed', 'source' => $source,
             'channel' => 'fixed-candidate', 'version' => null, 'run' => '123', 'attempt' => '2', 'reports' => []];
         $children = [];
-        foreach (['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'] as $platform) {
+        foreach (['linux-x64', 'linux-arm64', 'macos-arm64'] as $platform) {
             foreach (['mysql', 'pgsql', 'sqlite'] as $driver) {
                 $key = $platform . '/' . $driver;
                 $children[$key] = ['platform' => $platform, 'run' => '123', 'attempt' => '2'];
@@ -321,7 +321,7 @@ final class TutorialEvidenceTest extends TestCase
                 }
                 file_put_contents($path, json_encode($child, JSON_THROW_ON_ERROR));
             }
-            // 没有原始封存程序和业务回执，十二份身份一致的标题仍不能成为原生验收。
+            // 没有原始封存程序和业务回执，九份身份一致的标题仍不能成为原生验收。
             file_put_contents($file, json_encode($report, JSON_THROW_ON_ERROR));
             $this->rejected(static fn () => TutorialEvidence::matrix($file, $source, 'fixed-candidate', null, [], '123', '2'), '教程验收来源、版本、模板或状态不匹配');
         } finally {

@@ -22,7 +22,7 @@ final class ReleaseSizeTest extends TestCase
         $programs = array_fill_keys(Candidate::matrix(), ['bytes' => 100]);
         $result = SizeGate::verify($programs, null, ['protocol' => 1, 'explanations' => []], 'v1.0.0-rc.11');
         self::assertNull($result['baseline-version']);
-        self::assertCount(12, $result['comparisons']);
+        self::assertCount(9, $result['comparisons']);
     }
 
     public function testGrowthRequiresExplanationOnlyAboveFivePercent(): void

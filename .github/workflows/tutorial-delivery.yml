@@ -1,4 +1,4 @@
-name: 教程四平台单程序交付
+name: 教程三平台单程序交付
 
 on:
   workflow_dispatch:
@@ -78,7 +78,7 @@ jobs:
             [[ "$MODE" == public && "$DISPATCH_ONLY" == false && "$REFERENCE" == "$VERSION" ]] || exit 1
             [[ "$(git rev-parse --verify "refs/tags/$VERSION^{commit}")" == "$SOURCE" ]] || exit 1
           fi
-          # 发布复用入口不接受筛选，始终保留四平台和三个数据库。
+          # 发布复用入口不接受筛选，始终保留三个发布平台和三个数据库；Windows 仅支持手动诊断。
           if [[ "$DISPATCH_ONLY" == false ]]; then
             PLATFORM=all
             PROFILE=all
@@ -130,7 +130,7 @@ jobs:
 
   windows:
     needs: resolve
-    if: needs.resolve.outputs.platform == 'all' || needs.resolve.outputs.platform == 'windows-x64'
+    if: needs.resolve.outputs.platform == 'windows-x64'
     uses: ./.github/workflows/static-windows-candidate.yml
     strategy:
       fail-fast: false
@@ -161,10 +161,10 @@ jobs:
             .resolve.result == "success"
             and .linux.result == (if $platform == "all" or ($platform | startswith("linux-")) then "success" else "skipped" end)
             and .macos.result == (if $platform == "all" or $platform == "macos-arm64" then "success" else "skipped" end)
-            and .windows.result == (if $platform == "all" or $platform == "windows-x64" then "success" else "skipped" end)
+            and .windows.result == (if $platform == "windows-x64" then "success" else "skipped" end)
           ' <<< "$RESULTS"
           if [[ "$FULL" == true ]]; then
-            printf '四平台、三个数据库的教程任务已全部成功；发布仍需核对同轮十二份原始产物证据。\n' >> "$GITHUB_STEP_SUMMARY"
+            printf '三个发布平台、三个数据库的教程任务已全部成功；发布仍需核对同轮九份原始产物证据。Windows 仅保留诊断工作流。\n' >> "$GITHUB_STEP_SUMMARY"
           else
             printf '定向教程检查通过：平台 %s，数据库 %s。\n\n本轮仅为局部验收，不生成 tutorial-delivery-matrix，不能作为发布完整教程汇总。\n' "$PLATFORM" "$PROFILE" >> "$GITHUB_STEP_SUMMARY"
           fi

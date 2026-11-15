@@ -11,13 +11,13 @@ require_once __DIR__ . '/UpgradeBaseline.php';
 /** 跨平台汇总只接收同一可执行文件的回执；不会把历史目录归档升级为单程序证据。 */
 final class Candidate
 {
-    /** @var list<string> 发布支持的平台；顺序同时定义清单和校验输出顺序。 */
-    public const PLATFORMS = ['linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64'];
+    /** @var list<string> 当前 RC 发布支持的平台；Windows 仅保留独立诊断入口。 */
+    public const PLATFORMS = ['linux-x64', 'linux-arm64', 'macos-arm64'];
 
     /** @var list<string> 发布支持的数据库 profile。 */
     public const PROFILES = ['sqlite', 'mysql', 'pgsql'];
 
-    /** @return list<string> 12 个平台/profile 候选键。 */
+    /** @return list<string> 9 个平台/profile 候选键。 */
     public static function matrix(): array
     {
         $keys = [];
@@ -30,7 +30,7 @@ final class Candidate
     }
 
     /**
-     * 核对候选是否完整覆盖四个平台与三个数据库 profile。
+     * 核对候选是否完整覆盖三个发布平台与三个数据库 profile。
      *
      * 该检查与附件上传分离，恢复候选、生成公开清单和重试入口都必须先经过同一
      * 个矩阵边界，避免少一个 profile 时仍创建部分 Release。
@@ -45,7 +45,7 @@ final class Candidate
         $expected = self::matrix();
         sort($expected);
         if ($actual !== $expected) {
-            throw new \RuntimeException('候选必须完整覆盖四平台×三 profile 矩阵');
+            throw new \RuntimeException('候选必须完整覆盖三平台×三 profile 矩阵');
         }
         foreach ($records as $key => $record) {
             if (!is_array($record)) {
@@ -54,7 +54,7 @@ final class Candidate
         }
     }
 
-    /** 对外附件名不带归档后缀；Windows 保留可执行文件后缀。 */
+    /** 对外附件名不带归档后缀；Windows 不属于当前 RC 候选。 */
     public static function filename(string $version, string $platform, ?string $profile = null): string
     {
         Plan::version($version);
@@ -64,8 +64,7 @@ final class Candidate
         if ($profile !== null && !in_array($profile, self::PROFILES, true)) {
             throw new \InvalidArgumentException('单程序数据库 profile 无效');
         }
-        return 'typeapp-iot-' . substr($version, 1) . '-' . $platform . ($profile === null ? '' : '-' . $profile)
-            . ($platform === 'windows-x64' ? '.exe' : '');
+        return 'typeapp-iot-' . substr($version, 1) . '-' . $platform . ($profile === null ? '' : '-' . $profile);
     }
 
     /**
@@ -164,13 +163,11 @@ final class Candidate
                     throw new \RuntimeException('候选升级未使用固定公开旧程序：' . $platform . '/' . $profile);
                 }
             }
-            if ($platform !== 'windows-x64') {
-                $service = $record['service'] ?? [];
-                if (($service['status'] ?? '') !== 'passed' || ($service['driver'] ?? '') !== $profile
-                    || ($service['artifact-sha256'] ?? '') !== $record['sha256']
-                    || preg_match('/^[a-f0-9]{64}$/D', $service['log-sha256'] ?? '') !== 1) {
-                    throw new \RuntimeException('候选缺少同一 profile 程序的服务生命周期验收');
-                }
+            $service = $record['service'] ?? [];
+            if (($service['status'] ?? '') !== 'passed' || ($service['driver'] ?? '') !== $profile
+                || ($service['artifact-sha256'] ?? '') !== $record['sha256']
+                || preg_match('/^[a-f0-9]{64}$/D', $service['log-sha256'] ?? '') !== 1) {
+                throw new \RuntimeException('候选缺少同一 profile 程序的服务生命周期验收');
             }
         }
         $rebuild = $record['rebuild'] ?? [];
