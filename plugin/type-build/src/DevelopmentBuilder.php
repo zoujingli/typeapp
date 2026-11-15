@@ -121,14 +121,18 @@ final class DevelopmentBuilder
             // Composer 的 files 由 Composer 自己按唯一标识加载；提前 require 会绕过
             // Composer 的 once 保护，尤其在开发代次保留原函数文件时会造成重复声明。
             foreach (array_keys($loadFiles) as $file) {
-                if (isset($composerFilePaths[BuildPlatform::resolve($file)])) {
-                    if (isset($replaced[BuildPlatform::resolve($file)])) {
-                        // 生成代次替换了 Composer files 入口时，阻止 Composer
-                        // 之后重新加载原文件；普通入口继续由 require_once 加载。
-                        $GLOBALS['__composer_autoload_files'][$composerFilePaths[BuildPlatform::resolve($file)]] = true;
-                    }
+                $resolved = BuildPlatform::resolve($file);
+                $identifier = $composerFilePaths[$resolved] ?? null;
+                if ($identifier !== null && !isset($replaced[$resolved])
+                    && !empty($GLOBALS['__composer_autoload_files'][$identifier])) {
+                    // 构建 bootstrap 已加载的依赖函数入口已经具备 Composer once 身份。
+                    unset($loadFiles[$file]);
+                    continue;
                 }
                 require_once $file;
+                if ($identifier !== null) {
+                    $GLOBALS['__composer_autoload_files'][$identifier] = true;
+                }
             }
             require_once $vendor . '/autoload.php';
             // Composer 注册后继续让这份完整、已审计类映射优先，覆盖同文件原类的自动加载路径。

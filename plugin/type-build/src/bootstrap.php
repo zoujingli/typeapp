@@ -122,8 +122,28 @@ $GLOBALS['__type_build_loader'] = $loader;
 // 重放；构建入口必须先恢复 PHP-Parser 使用的 T_* 常量，再开始任何解析工作。
 require_once __DIR__ . '/PhpTokenCompatibility.php';
 
+$composerFunctionFiles = [];
+$composerFiles = $vendorDirectory . '/composer/autoload_files.php';
+if (is_file($composerFiles)) {
+    $entries = require $composerFiles;
+    if (!is_array($entries)) {
+        throw new RuntimeException('Composer files 清单损坏，拒绝加载构建依赖');
+    }
+    foreach ($entries as $identifier => $file) {
+        if (is_string($identifier) && is_string($file)) {
+            $resolved = realpath($file);
+            if ($resolved !== false) {
+                $composerFunctionFiles[$resolved] = $identifier;
+            }
+        }
+    }
+}
 foreach (array_keys($functionFiles) as $file) {
     require_once $file;
+    $resolved = realpath($file);
+    if ($resolved !== false && isset($composerFunctionFiles[$resolved])) {
+        $GLOBALS['__composer_autoload_files'][$composerFunctionFiles[$resolved]] = true;
+    }
 }
 
 return $vendorDirectory;
