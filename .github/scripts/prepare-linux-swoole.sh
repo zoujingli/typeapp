@@ -78,7 +78,9 @@ printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" > "$t
 task_original_scan="${PHP_INI_SCAN_DIR:-}"
 task_scan="$task_cli_d"
 if [[ -n "$task_original_scan" ]]; then
-  task_scan="$task_cli_d:$task_original_scan"
+    # PHP 扩展按扫描目录顺序装载；原始目录必须先于 Swoole 目录，
+    # 以便 sockets 提供 socket_ce 后再解析 Swoole 的依赖。
+    task_scan="$task_original_scan:$task_cli_d"
 fi
 printf 'PHP_INI_SCAN_DIR=%s\n' "$task_scan" >> "$GITHUB_ENV"
 export PHP_INI_SCAN_DIR="$task_scan"
