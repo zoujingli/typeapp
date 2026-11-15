@@ -11,7 +11,13 @@ read -r -a task_includes <<< "$("$task_sdk/bin/php-config" --includes)"
 cc "${task_includes[@]}" "$task_root/tools/embed-runtime-probe.c" -L"$task_sdk/lib" -Wl,-rpath,"$task_sdk/lib" -lphp -o "$task_work/probe"
 # 配置生成器不能继承原生验收临时扫描目录；否则重复准备会把受控模块
 # 再次写入主 php.ini，第二次探针就会报告 sockets/Redis/curl/Swoole 重复加载。
-env -u PHPRC PHP_INI_SCAN_DIR= "$task_sdk/bin/php" "$task_root/tools/configure-embed-runtime.php" "$task_work" base >/dev/null
+task_configure_env=(env PHP_INI_SCAN_DIR=)
+if [[ -n "${TYPE_NATIVE_PHP_INI:-}" && -f "$TYPE_NATIVE_PHP_INI" ]]; then
+  task_configure_env+=("PHPRC=$TYPE_NATIVE_PHP_INI")
+else
+  task_configure_env+=(-u PHPRC)
+fi
+"${task_configure_env[@]}" "$task_sdk/bin/php" "$task_root/tools/configure-embed-runtime.php" "$task_work" base >/dev/null
 
 # 仅退出码不足以发现重复模块等启动警告；实际 embed 的两个输出流都纳入门禁。
 probe_modules() {
@@ -46,7 +52,7 @@ if [[ ! -f "$task_work/pcntl.so" ]]; then
   (cd "$task_configure" && phpize && ./configure --with-php-config="$task_sdk/bin/php-config" --enable-pcntl=shared && make -j2) >&2
   cp "$task_configure/modules/pcntl.so" "$task_work/pcntl.so"
 fi
-env -u PHPRC PHP_INI_SCAN_DIR= "$task_sdk/bin/php" "$task_root/tools/configure-embed-runtime.php" "$task_work" shared >/dev/null
+"${task_configure_env[@]}" "$task_sdk/bin/php" "$task_root/tools/configure-embed-runtime.php" "$task_work" shared >/dev/null
 
 # Swoole 的 sockets 支持使用 PHP sockets 扩展导出的 socket_ce。CLI 配置可能
 # 通过扫描目录加载该扩展，而 embed 运行时会关闭扫描目录，因此把同一 SDK
