@@ -57,7 +57,9 @@ fi
 # 通过扫描目录加载该扩展，而 embed 运行时会关闭扫描目录，因此把同一 SDK
 # 的 sockets 模块登记到生成的独立配置，确保后续装配 Swoole 时依赖顺序稳定。
 task_socket_module="$("$task_sdk/bin/php-config" --extension-dir)/sockets.so"
-if [[ -f "$task_socket_module" ]] && ! grep -Eiq '^[[:space:]]*extension[[:space:]]*=.*sockets([.]so)?' "$task_work/php.ini"; then
+if [[ -f "$task_socket_module" ]] \
+  && ! grep -Eiq '^[[:space:]]*extension[[:space:]]*=.*sockets([.]so)?' "$task_work/php.ini" \
+  && ! grep -Eiq '^[[:space:]]*extension[[:space:]]*=.*sockets([.]so)?' "$task_work/php.d"/*.ini 2>/dev/null; then
   printf 'extension=%s\n' "$task_socket_module" >> "$task_work/php.ini"
 fi
 
@@ -67,10 +69,12 @@ if [[ -n "${TYPE_CURL_MODULE:-}" || -n "${TYPE_SWOOLE_MODULE:-}" ]]; then
   task_clean="$task_work/php.ini.clean"
   awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*(swoole|curl)/' "$task_work/php.ini" > "$task_clean"
   mv "$task_clean" "$task_work/php.ini"
-  if [[ -n "${TYPE_CURL_MODULE:-}" ]]; then
+  if [[ -n "${TYPE_CURL_MODULE:-}" ]] \
+    && ! grep -Eiq '^[[:space:]]*extension[[:space:]]*=.*curl([.]so)?' "$task_work/php.d"/*.ini 2>/dev/null; then
     printf 'extension=%s\n' "$TYPE_CURL_MODULE" >> "$task_work/php.ini"
   fi
-  if [[ -n "${TYPE_SWOOLE_MODULE:-}" ]]; then
+  if [[ -n "${TYPE_SWOOLE_MODULE:-}" ]] \
+    && ! grep -Eiq '^[[:space:]]*extension[[:space:]]*=.*swoole([.]so)?' "$task_work/php.d"/*.ini 2>/dev/null; then
     printf 'extension=%s\n' "$TYPE_SWOOLE_MODULE" >> "$task_work/php.ini"
   fi
 fi

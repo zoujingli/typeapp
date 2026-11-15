@@ -72,7 +72,7 @@ rm -f "$task_hooks_script"
 printf '受控 Swoole PDO 钩子：%s\n' "$task_hooks"
 [[ "$task_hooks" == hooks ]]
 # 受控模块写入独立扫描目录；保留 setup-php 原扫描目录中的 PDO 等基础扩展。
-task_cli_d="$GITHUB_WORKSPACE/.cache/typeapp-php.d"
+task_cli_d="$task_runtime_dir/php.d"
 mkdir -p "$task_cli_d"
 # 这些共享模块统一由下方同一扫描目录提供，避免主 INI 与扫描目录重复加载。
 task_clean="$(mktemp)"
