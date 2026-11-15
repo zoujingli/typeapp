@@ -89,6 +89,7 @@ try {
     echo "脚手架缺少队列/调度生产依赖与错误Task名均已拒绝，已有源码和声明摘要未变化。\n";
     $environment = getenv();
     $environment['APP_API_TOKEN'] = str_repeat('a', 40);
+    $environment['APP_ENV'] = 'dev';
     $environment['APP_DEBUG'] = 'true';
     $environment['DB_SQLITE_FILE'] = 'data/scaffolding.sqlite';
     successful([PHP_BINARY, $work . '/vendor/bin/type', 'dev', $config, 'migrate', 'run'], $work, $environment);
