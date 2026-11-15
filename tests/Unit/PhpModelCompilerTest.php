@@ -134,6 +134,45 @@ PHP;
     }
 
     /**
+     * 简洁声明展开的关系目标必须是绝对类型名，避免在原命名空间下重复拼接命名空间。
+     */
+    public function testSchemaRelationTargetUsesFullyQualifiedGeneratedPropertyType(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $directory = $root . '/build/model-schema-relation-' . bin2hex(random_bytes(6));
+        self::assertTrue(mkdir($directory, 0700));
+        $file = $directory . '/Models.php';
+        try {
+            file_put_contents($file, <<<'PHP'
+<?php
+declare(strict_types=1);
+namespace RelationModels;
+use Type\Orm\Model;
+
+final class User extends Model
+{
+    protected string $table = 'users';
+    protected array $schema = ['id' => 'int'];
+
+    public function profile() { return $this->hasOne(Profile::class, 'user_id', 'id'); }
+}
+
+final class Profile extends Model
+{
+    protected string $table = 'profiles';
+    protected array $schema = ['id' => 'int', 'user_id' => 'int'];
+}
+PHP);
+            $result = (new ModelCompiler())->compile([$file]);
+            self::assertStringContainsString('public ?\RelationModels\Profile $profile {', $result['code']);
+            self::assertStringNotContainsString('RelationModels\RelationModels\Profile', $result['code']);
+        } finally {
+            unlink($file);
+            rmdir($directory);
+        }
+    }
+
+    /**
      * 缓存槽属于生成器；公开字段和非公开业务状态都不能静默覆盖它。
      */
     public function testGeneratedMappingCachePropertyCannotBeDeclared(): void

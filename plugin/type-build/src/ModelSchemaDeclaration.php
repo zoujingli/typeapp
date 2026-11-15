@@ -7,6 +7,7 @@ namespace Type\Build;
 use PhpParser\Comment\Doc;
 use PhpParser\ConstExprEvaluator;
 use PhpParser\Node;
+use PhpParser\Node\Name\FullyQualified;
 use PhpParser\ParserFactory;
 
 /**
@@ -226,7 +227,7 @@ final class ModelSchemaDeclaration
             $relations[$name] = $relation;
             $many = in_array($relation['kind'], ['HasMany', 'BelongsToMany'], true);
             $property = new Node\Stmt\Property(Node\Stmt\Class_::MODIFIER_PUBLIC, [new Node\Stmt\PropertyProperty($name)]);
-            $property->type = $many ? new Node\Identifier('array') : new Node\NullableType(new Node\Name($arguments['target']));
+            $property->type = $many ? new Node\Identifier('array') : new Node\NullableType(new FullyQualified($arguments['target']));
             if ($statement->getDocComment() !== null) {
                 $property->setDocComment($statement->getDocComment());
             }
