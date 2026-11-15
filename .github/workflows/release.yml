@@ -139,31 +139,8 @@ jobs:
       scope: single-program
       profile: ${{ matrix.profile }}
 
-  windows-x64:
-    needs: [resolve, frontend]
-    if: needs.resolve.outputs.resume == 'false'
-    uses: ./.github/workflows/native-platform.yml
-    with:
-      source_sha: ${{ needs.resolve.outputs.source }}
-      frontend_artifact: release-frontend-${{ github.run_attempt }}
-      version: ''
-
-  windows-static:
-    needs: [resolve, frontend]
-    if: needs.resolve.outputs.resume == 'false'
-    uses: ./.github/workflows/static-windows-candidate.yml
-    strategy:
-      fail-fast: false
-      matrix:
-        profile: [sqlite, mysql, pgsql]
-    with:
-      source_sha: ${{ needs.resolve.outputs.source }}
-      frontend_artifact: release-frontend-${{ github.run_attempt }}
-      version: ${{ needs.resolve.outputs.version }}
-      profile: ${{ matrix.profile }}
-
   release-native-complete:
-    needs: [resolve, linux-x64, linux-arm64, macos-arm64, windows-x64, linux-static, macos-static, windows-static]
+    needs: [resolve, linux-x64, linux-arm64, macos-arm64, linux-static, macos-static]
     if: always() && needs.resolve.outputs.resume == 'false'
     runs-on: ubuntu-24.04
     steps:

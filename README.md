@@ -34,14 +34,14 @@ RC14 的四平台回归、十二个单程序、组件与模板分发及公开消
 
 ## 快速开始
 
-开发机准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展，具体分工见[环境与依赖](docs/guide/environment.md)。[版本安装示例](docs/guide/releases.md#composer-按版本安装)与当前教程已准备为 RC18，待该版本公开后创建 `my-app`，选择数据库并安装同批组件，然后在应用根目录执行：
+开发机准备 PHP `>=8.4 <8.6`、Composer、匹配的 Swoole 和所选 PDO 扩展，具体分工见[环境与依赖](docs/guide/environment.md)。[版本安装示例](docs/guide/releases.md#composer-按版本安装)与当前教程已准备为 RC19，待该版本公开后创建 `my-app`，选择数据库并安装同批组件，然后在应用根目录执行：
 
 ```bash
 php dev.php help
 php dev.php check
 ```
 
-安装后提交应用的 `composer.lock`，固定实际依赖版本。[连续目录教程](docs/guide/tutorial.md)从同一 RC18 批次创建第二模块，再演练缓存、事件、Outbox、队列与调度；已有 RC14 应用继续使用原 tag 的说明，升级差异见[版本说明](docs/guide/releases.md#从-rc14-升级到-rc18)。生产构建还须准备目标平台的静态 SDK，按[构建与部署](docs/guide/deployment.md)执行 `composer build`。
+安装后提交应用的 `composer.lock`，固定实际依赖版本。[连续目录教程](docs/guide/tutorial.md)从同一 RC19 批次创建第二模块，再演练缓存、事件、Outbox、队列与调度；已有 RC14 应用继续使用原 tag 的说明，升级差异见[版本说明](docs/guide/releases.md#从-rc14-升级到-rc19)。生产构建还须准备目标平台的静态 SDK，按[构建与部署](docs/guide/deployment.md)执行 `composer build`。
 
 本地模板与 Git tag 创建方式见[快速开始](docs/guide/quickstart.md)。`dev-main` 跟进子仓开发分支，不一定与当前 RC 相同；按版本安装才能复现本批次。
 
@@ -51,7 +51,7 @@ php dev.php check
 
 当前 `main` 补齐了配置与角色预检、生产错误关联、业务就绪探针和维护调度停止。物联中心采用全新空库安装，旧安装拒绝接入且不自动升级；操作顺序与实际平台验收范围见[构建与部署](docs/guide/deployment.md)和[实现规划](docs/guide/roadmap.md#启动与运行收口)。
 
-物联中心前端随 TypePHP 构建编入主程序，首次 `app:install` 安装到 `public/`，升级可用 `web:install --dry-run --force` 预览后再执行 `web:install --force`。普通启动不释放资源，运行端无需 Node.js 或前端开发服务器。推送版本 tag 的四平台构建、同版本组件分发、Packagist 核验与 Release 顺序见[版本发布与安装](docs/guide/releases.md)。
+物联中心前端随 TypePHP 构建编入主程序，首次 `app:install` 安装到 `public/`，升级可用 `web:install --dry-run --force` 预览后再执行 `web:install --force`。普通启动不释放资源，运行端无需 Node.js 或前端开发服务器。推送版本 tag 的三平台构建、同版本组件分发、Packagist 核验与 Release 顺序见[版本发布与安装](docs/guide/releases.md)。
 
 ## 仓库结构
 

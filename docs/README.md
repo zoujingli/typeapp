@@ -55,14 +55,14 @@
 
 ## 创建第一个应用
 
-当前[版本安装教程](guide/releases.md#composer-按版本安装)对应 RC18，确认该版本公开后创建 `my-app`、选择数据库并安装同批组件。在应用根目录检查实际入口：
+当前[版本安装教程](guide/releases.md#composer-按版本安装)对应 RC19，确认该版本公开后创建 `my-app`、选择数据库并安装同批组件。在应用根目录检查实际入口：
 
 ```bash
 php dev.php help
 php dev.php check
 ```
 
-提交应用的 `composer.lock`，固定实际安装版本；RC 仍是候选版。[连续目录教程](guide/tutorial.md)通过共同装配与脚手架完成第二模块，再连接缓存、事件、Outbox、队列、调度和同一原生验收；本页教程对应 RC18，不能混用 RC14 组件。已有本地模板或需要 Git 检出的用户，可使用[快速开始](guide/quickstart.md)中的 `type create` 或 tag 克隆入口。
+提交应用的 `composer.lock`，固定实际安装版本；RC 仍是候选版。[连续目录教程](guide/tutorial.md)通过共同装配与脚手架完成第二模块，再连接缓存、事件、Outbox、队列、调度和同一原生验收；本页教程对应 RC19，不能混用 RC14 组件。已有本地模板或需要 Git 检出的用户，可使用[快速开始](guide/quickstart.md)中的 `type create` 或 tag 克隆入口。
 
 <div class="guide-grid">
   <a class="guide-card" href="#/guide/typephp"><span class="guide-index">AOT <span aria-hidden="true">↗</span></span><strong>TypePHP 全量编译</strong><span>从 PHP 生产实现到原生程序，理解编译流程、覆盖范围与验证边界。</span><span class="guide-meta">TYPEPHP</span></a>
@@ -106,4 +106,4 @@ TypePHP 和 Composer 位于构建侧；生产运行执行已编译的业务与�
 
 应用模板和框架组件通过 Packagist 分发，Composer 自动解析传递依赖，无需逐一配置 Git 仓库。公开分发子仓保留源码、许可证与变更记录；可固定安装已发布的 RC，也可跟进开发分支，二者均不代表稳定版。交付范围以各平台实际验收为准。
 
-历史版本曾在 Linux x64 / ARM64、macOS ARM64、Windows x64 通过默认原生 CI；当前主线的实际范围以[平台与验收](guide/platforms.md#当前平台状态)和[当前 Tenant 重构验收记录](evidence/tenant-refactor-20261114.md)为准。本轮 macOS ARM64 已完成当前提交的 AOT、三库管理链路和真实 TLS MQTT 验证，Windows SDK 及正式平台/profile 矩阵仍未用当前提交重跑。全量编译指生产实现进入 TypePHP 的覆盖门槛，不等于测试覆盖率或所有 PHP 包兼容。
+历史版本曾在 Linux x64 / ARM64、macOS ARM64、Windows x64 通过默认原生 CI；当前主线的实际范围以[平台与验收](guide/platforms.md#当前平台状态)和[当前 Tenant 重构验收记录](evidence/tenant-refactor-20261114.md)为准；Windows 仅保留诊断，不进入当前 RC 发布。本轮 macOS ARM64 已完成当前提交的 AOT、三库管理链路和真实 TLS MQTT 验证，Windows SDK 及正式平台/profile 矩阵仍未用当前提交重跑。全量编译指生产实现进入 TypePHP 的覆盖门槛，不等于测试覆盖率或所有 PHP 包兼容。
