@@ -27,7 +27,7 @@
   </div>
 </section>
 
-> **交付一个主程序文件，配置独立维护，启动不释放运行库。** 当前 `v1.0.0-rc.19` 已固定到 `b485f0b`，发布候选目标为三平台 × 三个数据库 profile，共 9 个静态单程序；Windows x64 只保留诊断，不生成 RC 附件。RC19 尚未创建 GitHub Release，下载链接在候选通过后才可使用。部署端无需安装 PHP、Swoole、Composer 或 Node.js；使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
+> **交付一个主程序文件，配置独立维护，启动不释放运行库。** 当前 `v1.0.0-rc.19` 已固定到 `b485f0bbc8d7578749a1dce98d7586897f9e00fe`，发布候选目标为三平台 × 三个数据库 profile，共 9 个静态单程序；Windows x64 只保留诊断，不生成 RC 附件。RC19 尚未创建 GitHub Release，下载链接在候选通过后才可使用。部署端无需安装 PHP、Swoole、Composer 或 Node.js；使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
 
 <div class="feature-grid">
   <div><span class="feature-number">01 / DEVELOP</span><h2>按业务组合</h2><p>路由、模型、通信与任务，<br>通过组件形成应用。</p></div>

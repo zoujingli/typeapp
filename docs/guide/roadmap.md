@@ -2,7 +2,7 @@
 
 现有能力的需求与入口见[基础能力与验收](capabilities.md)，技术边界见[系统架构](architecture.md)。本文只维护尚未闭合的交付要求；有历史产物记录的结果不自动适用于当前源码与工具链。
 
-RC19 当前候选固定到 tag `v1.0.0-rc.19`、提交 `b485f0b`，目标是三平台九个数据库 profile；GitHub Release 和完整附件尚未公开。历史 RC14 的四平台十二程序验收、组件分发和公开消费仍保留在[升级验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，不能作为 RC19 通过证据。RC13 的原始身份继续保留在[历史平台证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/profile-release-20260930.md)。
+RC19 当前候选固定到 tag `v1.0.0-rc.19`、提交 `b485f0bbc8d7578749a1dce98d7586897f9e00fe`，目标是三平台九个数据库 profile；GitHub Release 和完整附件尚未公开。历史 RC14 的四平台十二程序验收、组件分发和公开消费仍保留在[升级验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)，不能作为 RC19 通过证据。RC13 的原始身份继续保留在[历史平台证据](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/profile-release-20260930.md)。
 
 ## 框架开发闭环
 

@@ -2,7 +2,7 @@
 
 版本由主仓的不可变 tag 驱动：`vX.Y.Z` 是正式版本，`vX.Y.Z-rc.N` 是候选版本。一次发布关联同一主仓提交、组件、应用模板和 Linux x64、Linux ARM64、macOS ARM64 三个平台的数据库 profile 矩阵；Windows 只保留诊断工作流，不生成 RC 附件。RC 标记为预发布，不成为稳定最新版。
 
-当前候选为 `v1.0.0-rc.19`，tag 固定到 `b485f0b`，目标为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个单文件程序；Windows x64 只保留诊断。GitHub Release、附件和 Packagist 回读尚未完成，不能使用“已公开”措辞。历史 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14) 的四平台十二程序结果保留在[升级验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。RC13 的标签、附件和验收身份保持不变。
+当前候选为 `v1.0.0-rc.19`，tag 固定到 `b485f0bbc8d7578749a1dce98d7586897f9e00fe`，目标为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个单文件程序；Windows x64 只保留诊断。GitHub Release、附件和 Packagist 回读尚未完成，不能使用“已公开”措辞。历史 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14) 的四平台十二程序结果保留在[升级验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。RC13 的标签、附件和验收身份保持不变。
 
 每个“平台 × profile”下载一个可执行文件，外置配置独立维护。PHP、PHPX、Swoole 等非系统原生库已静态链接，普通启动不释放运行库。历史 RC7 的目录归档与旧标签保持原样，其使用方式和验收身份保留在[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 

@@ -2,7 +2,7 @@
 
 物联中心是 TypeApp 的成品案例，采用单程序、多运行角色。Platform 管理平台与客户，System 管理当前 Tenant 的人员和系统设置，Center 管理该客户的设备及接入应用；通信层负责鉴权和原始消息路由，客户业务系统解释载荷。
 
-本文对应当前开发源码。历史发布版的程序、界面和原生证据保持各自身份；当前 RC19 代码基线 `b485f0b` 已在 macOS ARM64 完成本地全量 AOT、无源码运行、真实 TLS MQTT、三库管理链路和 Platform/System/Center 业务路由 smoke；Linux 两个平台与 Windows 当前提交的正式 profile 矩阵、逐页面业务 CRUD 交互仍待验证。设计取舍见[架构与界面设计](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-control-client-design.md)，实际验证入口见[验收说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/test-entrypoints.md)。
+本文对应当前开发源码。历史发布版的程序、界面和原生证据保持各自身份；当前 RC19 代码基线 `b485f0bbc8d7578749a1dce98d7586897f9e00fe` 已在 macOS ARM64 完成本地全量 AOT、无源码运行、真实 TLS MQTT、三库管理链路和 Platform/System/Center 业务路由 smoke；Linux 两个平台与 Windows 当前提交的正式 profile 矩阵、逐页面业务 CRUD 交互仍待验证。设计取舍见[架构与界面设计](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-control-client-design.md)，实际验证入口见[验收说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/test-entrypoints.md)。
 
 ## 职责与身份
 

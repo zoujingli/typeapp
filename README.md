@@ -4,7 +4,7 @@ TypeApp 是面向原生交付的 PHP 应用框架。用 PHP 编写业务，按�
 
 框架提供通信、数据、任务与资源管理能力。Swoole 作为内置原生运行库提供网络与并发支持，由构建流程管理并随应用交付，无需在部署端单独安装。TypePHP 和 Composer 用于构建，业务请求不依赖它们。
 
-**交付一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** 当前 `v1.0.0-rc.19` 已固定到 tag 提交 `b485f0b`，目标矩阵为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个发布 profile；Windows x64 仅保留诊断，不生成本 RC 附件。RC19 当前只有 tag，GitHub Release 与下载附件尚未完成，不能按“已公开版本”使用；安装方法见[版本安装](docs/guide/releases.md)，系统基线与业务服务要求见[环境与依赖](docs/guide/environment.md)。
+**交付一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** 当前 `v1.0.0-rc.19` 已固定到 tag 提交 `b485f0bbc8d7578749a1dce98d7586897f9e00fe`，目标矩阵为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个发布 profile；Windows x64 仅保留诊断，不生成本 RC 附件。RC19 当前只有 tag，GitHub Release 与下载附件尚未完成，不能按“已公开版本”使用；安装方法见[版本安装](docs/guide/releases.md)，系统基线与业务服务要求见[环境与依赖](docs/guide/environment.md)。
 
 文档站：[iots.top](https://iots.top)。新业务从 `type-project` 创建；主仓附带的物联中心展示框架如何组成业务产品。也可以访问[在线 Demo](https://demo.iots.top)，使用页面公布的演示身份体验物联中心；Demo 是独立部署，版本、数据和账号以站点实际状态为准，不代表 RC19 Release 已公开。正式安装不会预置通用账号或默认口令。
 
