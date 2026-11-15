@@ -2,6 +2,8 @@
 
 工作流存在、静态检查通过与对应runner实际执行通过是三种不同状态。各平台证据独立，不以本机或其他架构结果替代最终同提交验收。
 
+发布主链按 TypePHP 官方 CI 的最小闭环执行：固定 PHP 8.5.12 ZTS、PHPX/Swoole 运行库和前端资源后，每个平台/profile 只编译一次最终单程序，并执行启动、迁移、HTTP/ORM smoke 与产物摘要检查。Linux x64、Linux ARM64、macOS ARM64 的完整协议、工具链、教程和历史兼容矩阵保留为独立诊断，可手动选择范围；诊断失败不会阻断基础 Release，也不能据此宣称诊断已通过。这样可以避免同一 profile 在发布链重复编译，同时保留完整验收入口。
+
 RC13 的固定源码、四平台矩阵、12 个程序及公开消费继续按[正式发布证据](../evidence/profile-release-20260930.md)保留。TypePHP 0.9.4、PHPX 2.9.3 与 Swoole 开发快照的 RC14 已完成正式发布及公开回读；准确源码、运行轮次、失败诊断与完成范围集中记录在[升级验收记录](../evidence/typephp-upgrade-0.9.4.md)。下面说明可复现入口，不将历史通过结果计为新版通过。
 
 开发和功能提交直接在`main`进行。原有Linux x64、Windows和macOS原生工作流的push触发范围均为`main`，不再使用临时验证分支；新增Linux ARM64入口只接受`workflow_dispatch`。远端推送和手动调度沿用会话授权。

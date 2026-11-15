@@ -187,8 +187,21 @@ jobs:
           task_module="$(bash tools/prepare-swoole-module.sh)"
           task_control="$GITHUB_WORKSPACE/build/static-linux-control"
           mkdir -p "$task_control/php.d"
-          printf 'memory_limit=2G\ndisplay_errors=1\nextension=%s\nextension=%s\nextension=%s\n' \
-            "$(php-config --extension-dir)/curl.so" "$(php-config --extension-dir)/redis.so" "$task_module" > "$task_control/php.ini"
+          task_tokenizer_module="$(php-config --extension-dir)/tokenizer.so"
+          if [[ ! -f "$task_tokenizer_module" ]]; then
+            [[ "$(php -r 'echo extension_loaded("tokenizer") && function_exists("token_get_all") ? "1" : "0";')" == "1" ]] || {
+              echo "缺少 PHP tokenizer 扩展：$task_tokenizer_module" >&2
+              exit 1
+            }
+            task_tokenizer_module=""
+          fi
+          printf 'memory_limit=2G\ndisplay_errors=1\nextension=%s\nextension=%s\n' \
+            "$(php-config --extension-dir)/curl.so" "$(php-config --extension-dir)/redis.so" > "$task_control/php.ini"
+          if [[ -n "$task_tokenizer_module" ]]; then
+            printf 'extension=%s\n' "$task_tokenizer_module" >> "$task_control/php.ini"
+          fi
+          printf 'extension=%s\n' "$task_module" >> "$task_control/php.ini"
+          PHPRC="$task_control/php.ini" PHP_INI_SCAN_DIR="$task_control/php.d" php -r 'if (!extension_loaded("tokenizer") || !function_exists("token_get_all")) { fwrite(STDERR, "受控 PHP 缺少 tokenizer\n"); exit(1); } token_get_all("<?php echo 1;");'
           printf 'PHPX_HOME=%s\nPHPRC=%s/php.ini\nPHP_INI_SCAN_DIR=%s/php.d\nTYPE_SWOOLE_MODULE=%s\n' \
             "$PHPX_HOME" "$task_control" "$task_control" "$task_module" >> "$GITHUB_ENV"
       - name: 制备静态目标 SDK 并执行真实 embed 探针

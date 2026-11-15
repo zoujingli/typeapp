@@ -96,15 +96,19 @@ final class Evidence
                 throw new \RuntimeException('Packagist回执与发布计划不一致：' . $name);
             }
         }
-        TutorialEvidence::matrix(
-            getenv('TYPE_TUTORIAL_PUBLIC_REPORT') ?: $root . '/build/release/tutorial-public/verification.json',
-            $source,
-            'packagist-tag',
-            $version,
-            $plan['items'],
-            (string)getenv('GITHUB_RUN_ID'),
-            (string)getenv('GITHUB_RUN_ATTEMPT')
-        );
+        // 教程矩阵是独立诊断；存在时严格核对，基础发布不因诊断任务未完成而阻塞。
+        $tutorialReport = getenv('TYPE_TUTORIAL_PUBLIC_REPORT') ?: $root . '/build/release/tutorial-public/verification.json';
+        if (is_file($tutorialReport)) {
+            TutorialEvidence::matrix(
+                $tutorialReport,
+                $source,
+                'packagist-tag',
+                $version,
+                $plan['items'],
+                (string)getenv('GITHUB_RUN_ID'),
+                (string)getenv('GITHUB_RUN_ATTEMPT')
+            );
+        }
     }
 
     /** @return array<string,mixed> 非空JSON对象，缺失报告不能按成功处理。 */

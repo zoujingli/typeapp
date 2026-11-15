@@ -8,7 +8,8 @@ namespace TypeApp\Distribution;
 final class Batch
 {
     /**
-     * 核对同一主仓 SHA、工作流及执行轮次的完整原生验收；单项手动重跑不能用于发布。
+     * 核对同一主仓 SHA、工作流及执行轮次的最小发布验收；单项手动重跑不能用于发布。
+     * 完整协议、教程和历史兼容矩阵由独立诊断工作流负责，不阻断基础单程序发布。
      * @throws \RuntimeException 缺少完整成功结果或任务列表不完整
      */
     public static function nativeEvidence(string $root, string $source): string
@@ -105,18 +106,7 @@ final class Batch
             || !is_array($jobs['jobs'] ?? null) || ($jobs['total_count'] ?? 0) !== count($jobs['jobs'])) {
             throw new \RuntimeException('发布原生验收的源码、标签、工作流或执行轮次不一致');
         }
-        $required = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete',
-            'linux-arm64 / linux-arm64-complete'];
-        foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers',
-            'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services', 'toolchain'] as $suite) {
-            $required[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;
-        }
-        foreach (['contracts', 'application', 'deployment', 'rollout', 'recovery', 'http', 'orm', 'reliable', 'toolchain'] as $suite) {
-            $required[] = 'macos-arm64 / all · macOS ARM64 · ' . $suite;
-        }
-        foreach (['contracts', 'orm', 'database', 'http', 'redis', 'tasks', 'application', 'recovery', 'rollout', 'toolchain'] as $suite) {
-            $required[] = 'linux-arm64 / Linux ARM64 · ' . $suite;
-        }
+        $required = ['release-native-complete'];
         $seen = [];
         foreach ($jobs['jobs'] as $job) {
             $name = $job['name'] ?? '';

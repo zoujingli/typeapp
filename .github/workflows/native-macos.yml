@@ -188,7 +188,9 @@ jobs:
           task_swoole_module="$(bash tools/prepare-swoole-module.sh)"
           printf 'TYPE_SWOOLE_MODULE=%s\n' "$task_swoole_module" >> "$GITHUB_ENV"
           # shellcheck disable=SC2016
-          php -r '$ini=php_ini_loaded_file();$text=$ini===false?"":file_get_contents($ini);foreach(explode(",",(string)php_ini_scanned_files()) as $file){if(trim($file)!==""){$text.="\n".file_get_contents(trim($file));}}$text=preg_replace("/^[ \\t]*extension[ \\t]*=.*(?:swoole|curl|tokenizer).*/mi","",$text);if(!is_string($text)||file_put_contents($argv[1],$text)!==strlen($text)||!chmod($argv[1],0600)){exit(1);}' "$task_control/php.ini"
+          # TypePHP 的 PHP 解析器依赖 tokenizer；控制器配置只替换本轮的
+          # Swoole/curl，保留 tokenizer 的内置或共享模块声明。
+          php -r '$ini=php_ini_loaded_file();$text=$ini===false?"":file_get_contents($ini);foreach(explode(",",(string)php_ini_scanned_files()) as $file){if(trim($file)!==""){$text.="\n".file_get_contents(trim($file));}}$text=preg_replace("/^[ \\t]*extension[ \\t]*=.*(?:swoole|curl).*/mi","",$text);if(!is_string($text)||file_put_contents($argv[1],$text)!==strlen($text)||!chmod($argv[1],0600)){exit(1);}' "$task_control/php.ini"
           task_curl_module="$(php-config --extension-dir)/curl.so"
           task_tokenizer_module="$(php-config --extension-dir)/tokenizer.so"
           if [[ ! -f "$task_tokenizer_module" ]]; then
@@ -213,7 +215,7 @@ jobs:
             task_curl_module=""
             echo 'curl=provided-by-php' | tee "$RUNNER_TEMP/curl-module.log"
           fi
-          if [[ -n "$task_tokenizer_module" ]]; then
+          if [[ -n "$task_tokenizer_module" ]] && ! grep -Eiq '^[[:space:]]*extension[[:space:]]*=.*tokenizer' "$task_control/php.ini"; then
             printf 'extension=%s\n' "$task_tokenizer_module" >> "$task_control/php.ini"
           fi
           printf 'extension=%s\n' "$task_swoole_module" >> "$task_control/php.ini"
@@ -228,6 +230,7 @@ jobs:
           [[ "$(PHPRC="$task_runtime_ini" PHP_INI_SCAN_DIR="$task_control/php.d" "$task_runtime_probe")" == '1 1 1 1' ]]
           printf 'TYPE_CURL_MODULE=%s\nPHP_HOME=%s\nPHPX_HOME=%s\nTYPE_NATIVE_PHP_INI=%s\nPHPRC=%s\nPHP_INI_SCAN_DIR=%s\nCOMPOSER_BINARY=%s\n' \
             "$task_curl_module" "$PHP_HOME" "$PHPX_HOME" "$task_runtime_ini" "$task_control/php.ini" "$task_control/php.d" "$(command -v composer)" >> "$GITHUB_ENV"
+          PHPRC="$task_control/php.ini" PHP_INI_SCAN_DIR="$task_control/php.d" php -r 'if (!extension_loaded("tokenizer") || !function_exists("token_get_all")) { fwrite(STDERR, "受控 PHP 缺少 tokenizer\n"); exit(1); } token_get_all("<?php echo 1;");'
       - name: 准备并核对内嵌管理前端
         if: inputs.tutorial_mode == ''
         uses: ./.github/actions/prepare-frontend

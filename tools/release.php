@@ -112,7 +112,6 @@ try {
             throw new RuntimeException('候选SHA256SUMS与原始附件不一致');
         }
     } elseif ($operation === 'candidate') {
-        Evidence::tutorialCandidate($root, $plan);
         Batch::nativeEvidence($root, $source);
         $run = (string)getenv('TYPE_RELEASE_EVIDENCE_RUN');
         $attempt = (string)getenv('TYPE_RELEASE_EVIDENCE_ATTEMPT');

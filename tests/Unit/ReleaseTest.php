@@ -459,19 +459,10 @@ final class ReleaseTest extends TestCase
             'head_repository' => ['full_name' => 'zoujingli/typeapp'], 'path' => '.github/workflows/release.yml', 'event' => 'push', 'status' => 'in_progress'];
         $names = ['distribute / plan', 'distribute / collect', 'distribute / consume', 'template / template'];
         if ($kind === 'native') {
-            $names = ['release-native-complete', 'linux-x64 / native-complete', 'macos-arm64 / macos-complete', 'linux-arm64 / linux-arm64-complete'];
+            $names = ['release-native-complete'];
             foreach (['sqlite', 'mysql', 'pgsql'] as $profile) {
                 $names = [...$names, $profile . ' · 静态单程序 · linux-x64', $profile . ' · 静态单程序 · linux-arm64',
                     $profile . ' · macOS ARM64 · single-program'];
-            }
-            foreach (['foundation', 'http', 'drivers', 'queries', 'models', 'data', 'cache', 'queue', 'scheduler', 'consumers', 'reliability', 'rollout', 'integration', 'tls', 'isolated-build', 'app', 'delivery', 'packaged-rollout', 'services', 'toolchain'] as $suite) {
-                $names[] = 'linux-x64 / Linux x64 原生验收 · ' . $suite;
-            }
-            foreach (['contracts', 'application', 'deployment', 'rollout', 'recovery', 'http', 'orm', 'reliable', 'toolchain'] as $suite) {
-                $names[] = 'macos-arm64 / all · macOS ARM64 · ' . $suite;
-            }
-            foreach (['contracts', 'orm', 'database', 'http', 'redis', 'tasks', 'application', 'recovery', 'rollout', 'toolchain'] as $suite) {
-                $names[] = 'linux-arm64 / Linux ARM64 · ' . $suite;
             }
         }
         if (in_array($change, ['with-tutorials', 'tutorial-only'], true)) {
@@ -551,9 +542,6 @@ final class ReleaseTest extends TestCase
         }
         yield 'native-with-tutorials' => ['native', 'with-tutorials'];
         yield 'tutorial-cannot-replace-static' => ['native', 'tutorial-only'];
-        foreach (['linux-x64', 'linux-arm64', 'macos-arm64'] as $platform) {
-            yield 'missing-toolchain-' . $platform => ['native', 'missing-toolchain-' . $platform];
-        }
     }
 
     /** 超过一页的消费任务仍可通过；丢页、重复任务和读取中变化不能获得发布资格。 */

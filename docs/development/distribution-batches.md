@@ -66,9 +66,9 @@ PHPUnit 的候选准备回归使用临时 Git 仓库，覆盖公开模板、未�
 
 `composer test:tutorial-delivery -- baseline v1.0.0-rc.14` 只核对准确既有批次的默认 Packagist 安装与模板入口，报告类型为 `published-template-baseline`，不能证明新教程能力。新批次实际公开后运行 `composer test:tutorial-delivery -- public 准确tag --runtime-map=静态SDK映射.json`，回读远端 tag、默认索引、原样下载的模板及所有实际安装版本；该入口不会创建或发布版本。`--php` 仅用于先验证教程 PHP 行为，其 `tutorial-php` 报告也不能通过单程序准入。
 
-`composer check:tutorial-evidence -- candidate 完整SHA 报告路径` 或 `public 完整SHA 报告路径 准确tag` 只读复核本机三数据库的 `tutorial-delivery` 报告。正式准入要求 Linux x64、Linux ARM64、macOS ARM64、Windows x64 各三个数据库，共十二份原始报告，且固定源码、来源渠道、run 与 attempt 完全一致。每项 artifact 命名为 `tutorial-candidate|public-平台-profile-attempt`，下载到汇总目录的 `inputs/` 后，运行 `php tools/collect-tutorial.php candidate|public 完整SHA 汇总目录 run attempt [公开tag]` 生成 `tutorial-delivery-matrix`；汇总失败会将旧成功报告作废。缺少任何平台、数据库、原始文件、摘要、完整生产依赖、静态库或隔离检查均拒绝。
+`composer check:tutorial-evidence -- candidate 完整SHA 报告路径` 或 `public 完整SHA 报告路径 准确tag` 只读复核本机三数据库的 `tutorial-delivery` 报告。显式执行教程准入时仍要求 Linux x64、Linux ARM64、macOS ARM64、Windows x64 各三个数据库，共十二份原始报告，且固定源码、来源渠道、run 与 attempt 完全一致。每项 artifact 命名为 `tutorial-candidate|public-平台-profile-attempt`，下载到汇总目录的 `inputs/` 后，运行 `php tools/collect-tutorial.php candidate|public 完整SHA 汇总目录 run attempt [公开tag]` 生成 `tutorial-delivery-matrix`；汇总失败会将旧成功报告作废。缺少任何平台、数据库、原始文件、摘要、完整生产依赖、静态库或隔离检查均拒绝。
 
-候选准入使用 `TYPE_TUTORIAL_CANDIDATE_REPORT`，默认为 `build/release/tutorial-candidate/verification.json`；公开准入使用 `TYPE_TUTORIAL_PUBLIC_REPORT`，默认为 `build/release/tutorial-public/verification.json`。`release.yml` 先通过 `tutorial-delivery.yml` 构建固定候选十二项；恢复发布时回读已登记候选原 run/attempt，不能混用重新执行的单项。模板和组件公开后，再执行准确 tag 的默认 Packagist 十二项，当前轮次全部通过后才发布最终附件。候选门禁不依赖尚未发生的公开消费，测试入口本身不发布版本。
+候选和公开报告路径仍分别使用 `TYPE_TUTORIAL_CANDIDATE_REPORT`、`TYPE_TUTORIAL_PUBLIC_REPORT`，默认路径保持不变，便于手动严格复核。为缩短基础 Release，`.github/workflows/release.yml` 不再自动调用教程矩阵；主链只等待三平台×三数据库静态单程序编译、迁移、HTTP/ORM smoke 及组件/模板消费。诊断报告存在时发布工具仍严格核对，缺少报告不会把基础 Release 标记为教程已通过；需要教程准入时必须单独运行 `tutorial-delivery.yml` 并保存完整矩阵。
 
 在确定新版本号之前，可直接手动运行 `tutorial-delivery.yml`，提供 `main` 已包含的完整 `source_sha`。`platform` 和 `profile` 默认都是 `all`，执行四平台、三个数据库的完整候选矩阵。`platform` 可选 `linux-x64`、`linux-arm64`、`macos-arm64`、`windows-x64`；`profile` 可选 `sqlite`、`mysql`、`pgsql`，用于定位失败组合，仍复用原有静态构建、同产物部署和证据保全入口。
 
@@ -80,11 +80,11 @@ gh workflow run tutorial-delivery.yml --ref main \
   -f platform=windows-x64 -f profile=sqlite
 ```
 
-定向任务成功只代表选定组合通过。工作流汇总会明确标注“定向教程结果（非发布验收）”，未选择的任务须为 skipped，所选任务必须成功；它不生成 `tutorial-delivery-matrix`，不能拼接其他 run 或 attempt 作为发布完整矩阵。`release.yml` 通过 `workflow_call` 调用时不提供筛选参数，始终执行完整十二项，候选和公开消费的原有发布门禁保持不变。
+定向任务成功只代表选定组合通过。工作流汇总会明确标注“定向教程结果（非发布验收）”，未选择的任务须为 skipped，所选任务必须成功；它不生成 `tutorial-delivery-matrix`，不能拼接其他 run 或 attempt 作为发布完整矩阵。`release.yml` 中的教程诊断不再阻断基础发布；需要完整教程证据时，仍应显式调度全矩阵并使用 `collect-tutorial.php` 汇总。
 
 手动入口校验固定提交及祖先关系，权限只有读取；内部 `v0.0.0` 仅供构建步骤记录占位元数据，不创建 tag、草稿或 Release，也不代表已选定下一版本。手动入口不能选择公开模式。
 
-当前 RC14 默认 Packagist 三库入口基线已经通过，但不证明新教程接口。新教程的四平台十二项 AOT 同产物矩阵和新批次默认 Packagist 消费仍需真实执行；强制中断后的全过程资源回收也尚未完成专项验证，不能据已有 PHP 或门禁单元测试记为完成。
+当前 RC14 默认 Packagist 三库入口基线已经通过，但不证明新教程接口。新教程的四平台十二项 AOT 同产物矩阵和新批次默认 Packagist 消费仍可单独执行；它们属于教程诊断证据，不再阻断基础 Release。强制中断后的全过程资源回收仍需专项验证，不能据已有 PHP 或门禁单元测试记为完成。
 
 ### IoT完整应用的本机候选
 
