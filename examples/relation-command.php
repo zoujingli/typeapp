@@ -59,7 +59,7 @@ function main(int $argc, array $argv): void
                 $profiles = Relation::hasOne(static fn (Connection $connection): ModelQuery => Profile::query()->onConnection($connection), 'user_id', 'id', 2);
                 $base = User::query()->select(['name']);
                 $before = $connection->statistics()['read_attempts'];
-                $users = $base->with('articles', $articles)->with('profile', $profiles)->orderBy('id')->get();
+                $users = $base->with('articles', $articles)->with('profile', $profiles)->order('id')->get();
                 relationExpect($connection->statistics()['read_attempts'] - $before === 5, '预加载没有按父键分批查询');
                 relationExpect(array_slice($connection->statistics()['recent_read_parameter_sizes'], -5) === [0, 2, 1, 2, 1], '关系查询的批量参数大小不符');
                 $reads = $connection->statistics()['read_attempts'];
@@ -80,7 +80,7 @@ function main(int $argc, array $argv): void
                 $posts = Article::query()->select(['title'])->with('owner', $owner)->order('id')->get();
                 relationExpect($posts[0]->related('owner')->getName() === '甲' && $posts[3]->related('owner') === null, 'belongsTo 或空外键语义错误');
                 $connection->table('type_model_articles')->where('id', '=', 11)->update(['user_id' => 2]);
-                $changed = $base->with('articles', $articles)->orderBy('id')->get();
+                $changed = $base->with('articles', $articles)->order('id')->get();
                 relationExpect(count($changed[0]->related('articles')) === 1 && count($changed[1]->related('articles')) === 2, '关联变更后读取了旧关系状态');
                 $rejected = false;
                 try {
