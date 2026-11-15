@@ -179,7 +179,7 @@ jobs:
         run: ./.github/scripts/prepare-windows-native.ps1
       - name: 安装锁定源码并核对静态 SDK
         run: |
-          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress --ignore-platform-reqs
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress --no-ansi -vvv --ignore-platform-reqs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" tests/windows-artifact-size.php
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
