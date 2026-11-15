@@ -89,11 +89,26 @@ if [[ "$task_execution" == host && -n "${TYPE_SWOOLE_MODULE:-}" ]]; then
   [[ -f "$task_curl_module" ]] || { echo "隔离构建缺少 curl 共享模块：$task_curl_module" >&2; exit 1; }
   [[ -f "$task_redis_module" ]] || { echo "隔离构建缺少 redis 共享模块：$task_redis_module" >&2; exit 1; }
   cp "$task_curl_module" "$task_modules/curl.so"
+  # 隔离环境只扫描本轮复制的模块；保留 PDO/驱动及 redis 的 igbinary
+  # 前置依赖，否则 Swoole 会在启动时看不到 PDO，redis 会解析到未定义符号。
+  for task_dependency in pdo pdo_mysql pdo_pgsql pdo_sqlite igbinary; do
+    if [[ -f "$task_extension_dir/$task_dependency.so" ]]; then
+      cp "$task_extension_dir/$task_dependency.so" "$task_modules/$task_dependency.so"
+    fi
+  done
   cp "$task_redis_module" "$task_modules/redis.so"
   cp "$TYPE_SWOOLE_MODULE" "$task_modules/swoole.so"
-  chmod 0644 "$task_modules/curl.so" "$task_modules/redis.so" "$task_modules/swoole.so"
+  chmod 0644 "$task_modules"/*.so
   printf 'extension=%s\n' "$task_modules/curl.so" > "$task_cli_d/00-curl.ini"
-  printf 'extension=%s\n' "$task_modules/redis.so" > "$task_cli_d/10-redis.ini"
+  task_ini_order=01
+  for task_dependency in pdo pdo_mysql pdo_pgsql pdo_sqlite igbinary; do
+    if [[ -f "$task_modules/$task_dependency.so" ]]; then
+      printf 'extension=%s\n' "$task_modules/$task_dependency.so" > "$task_cli_d/${task_ini_order}-${task_dependency}.ini"
+      task_ini_order=$((task_ini_order + 1))
+    fi
+  done
+  printf 'extension=%s\n' "$task_modules/redis.so" > "$task_cli_d/${task_ini_order}-redis.ini"
+  task_ini_order=$((task_ini_order + 1))
   printf 'extension=%s\nswoole.enable_fiber_mock=On\ndisplay_startup_errors=1\nmemory_limit=2G\n' \
     "$task_modules/swoole.so" > "$task_cli_d/20-swoole.ini"
   host_parent_directories "$task_modules/swoole.so"

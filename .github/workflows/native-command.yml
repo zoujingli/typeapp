@@ -448,7 +448,7 @@ jobs:
           composer test:optimistic-native
 
       - name: 准备主从选路的独立本机数据库工具
-        if: matrix.suite == 'data'
+        if: matrix.suite == 'data' || matrix.suite == 'app'
         run: |
           sudo apt-get update
           sudo apt-get install --yes mysql-server mysql-client postgresql

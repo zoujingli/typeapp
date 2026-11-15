@@ -55,7 +55,7 @@ jobs:
         run: ./.github/scripts/prepare-windows-native.ps1
       - name: 安装锁定源码与核对静态 SDK 契约
         run: |
-          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress --ignore-platform-req=ext-pcntl --ignore-platform-req=ext-swoole
+          & "$env:PHP_HOME/php.exe" "$env:PHP_HOME/composer.phar" install --no-scripts --no-plugins --prefer-dist --no-progress --ignore-platform-reqs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:PHP_HOME/php.exe" vendor/bin/phpunit --filter 'WindowsStaticBackendTest|StaticRuntimeSdkTest'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
