@@ -8,4 +8,3 @@
 - [物联中心](/guide/iot-center.md)
 - [许可证](/guide/licensing.md)
 - [GitHub](https://github.com/zoujingli/typeapp)
-- [TypePHP](https://github.com/swoole/typephp)
