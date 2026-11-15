@@ -91,6 +91,14 @@ printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" > "$t
 task_scan="$task_cli_d"
 printf 'PHP_INI_SCAN_DIR=%s\n' "$task_scan" >> "$GITHUB_ENV"
 export PHP_INI_SCAN_DIR="$task_scan"
+# configure-toolchain 可能返回带内容摘要的 SDK 目录，而 setup-php 早先
+# 写入的 PATH 仍指向另一份同版本 PHP；后续 Composer/PHP 命令必须和扩展
+# 使用同一套 SDK，否则会出现 socket_ce 等 ABI 符号缺失。
+printf '%s\n' "$PHP_HOME/bin" >> "$GITHUB_PATH"
+export PATH="$PHP_HOME/bin:$PATH"
+hash -r
+printf '受控 PHP：%s\n' "$(command -v php)"
+"$PHP_HOME/bin/php" -r 'printf("PHP %s %s\n", PHP_VERSION, PHP_ZTS ? "ZTS" : "NTS");'
 # 公开消费者直接安装依赖，不忽略所需扩展；错误在大规模编译前暴露。
 composer check-platform-reqs --no-interaction
 # Swoole 的协程 PostgreSQL/SQLite 实现已经编入受控模块；AOT 运行配置不能再
