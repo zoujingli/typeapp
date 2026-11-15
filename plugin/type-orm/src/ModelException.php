@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Type\Orm;
 
+use Type\Runtime\FailureInterface;
+
 /** 模型映射、状态、归属或乐观并发约束失败。 */
-final class ModelException extends DatabaseException
+final class ModelException extends DatabaseException implements FailureInterface
 {
     private string $errorCode;
 

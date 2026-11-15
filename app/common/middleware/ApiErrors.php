@@ -10,14 +10,13 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use Type\Core\Http\HttpError;
 use Type\Core\Http\Message\Factory;
 use Type\Log\Logger;
 use Type\Log\Output;
 use Type\Orm\ModelException;
 use Type\Runtime\CapacityException;
+use Type\Runtime\PublicFailureInterface;
 use Type\Runtime\TaskException;
-use Type\Validate\ValidationException;
 
 /**
  * 统一公开失败响应与请求关联；开发详情只输出到受控日志，不随 HTTP 响应泄漏。
@@ -57,16 +56,14 @@ final class ApiErrors implements MiddlewareInterface
             return $handler->handle($request->withAttribute('app.request_id', $requestId));
         } catch (RuntimeCapabilityException $capabilityError) {
             return $this->response(503, ['error' => $capabilityError->errorCode()], $requestId);
-        } catch (HttpError $httpError) {
-            return $this->response($httpError->status(), ['error' => $httpError->errorCode()], $requestId);
+        } catch (PublicFailureInterface $failure) {
+            return $this->response($failure->status(), $failure->body(), $requestId);
         } catch (TaskException $taskError) {
             return $this->response(
                 $taskError->errorCode() === 'deadline_exceeded' ? 504 : 503,
                 ['error' => $taskError->errorCode()],
                 $requestId
             );
-        } catch (ValidationException $validationError) {
-            return $this->response($validationError->status(), $validationError->body(), $requestId);
         } catch (ModelException $modelError) {
             if ($modelError->errorCode() === 'user_not_found') {
                 return $this->response(404, ['error' => 'user_not_found'], $requestId);
@@ -141,7 +138,7 @@ final class ApiErrors implements MiddlewareInterface
     }
 
     /**
-     * @param array<string, mixed> $body 稳定错误码与不含输入值的公开校验结果。
+     * @param array<string, mixed> $body 稳定错误码与不含输入值的公开校验结果
      */
     private function response(int $status, array $body, string $requestId): ResponseInterface
     {

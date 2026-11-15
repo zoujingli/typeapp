@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Type\Core\Http;
 
+use Type\Runtime\PublicFailureInterface;
+
 /** HTTP 边界可转换为公开响应的状态与稳定错误码，不携带业务秘密。 */
-final class HttpError extends \RuntimeException
+final class HttpError extends \RuntimeException implements PublicFailureInterface
 {
     private int $status;
 
@@ -29,5 +31,11 @@ final class HttpError extends \RuntimeException
     public function errorCode(): string
     {
         return $this->errorCode;
+    }
+
+    /** @return array{error:string} */
+    public function body(): array
+    {
+        return ['error' => $this->errorCode];
     }
 }

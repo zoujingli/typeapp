@@ -7,7 +7,7 @@ namespace Type\Core;
 use Type\Runtime\ExecutionScope;
 
 /** 当前执行作用域内的同步业务事件入口；监听表由构建器生成，不提供运行时注册。 */
-final class BusinessEvents
+final class BusinessEvents implements EventDispatcher
 {
     /**
      * @internal 只由生成装配构造；事件类型与直接监听调用已经过静态校验

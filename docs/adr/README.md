@@ -28,3 +28,5 @@
 - [Platform / System / Center 与原始通信](0026-control-client-device-authorization.md)
 - [Center 支撑业务事实直接绑定 Tenant](0027-center-support-records-tenant-scope.md)
 - [MQTT 持久状态保留受控基础设施边界](0028-mqtt-persistence-model-boundary.md)
+- [标准失败契约与边界响应](0029-standard-failure-contract.md)
+- [AOT 事件契约与失败流程分离](0030-aot-event-contract.md)

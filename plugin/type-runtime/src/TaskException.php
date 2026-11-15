@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Type\Runtime;
 
 /** 执行上下文、预算和任务生命周期失败的稳定错误载体。 */
-final class TaskException extends \RuntimeException
+final class TaskException extends \RuntimeException implements FailureInterface
 {
     private string $errorCode;
 

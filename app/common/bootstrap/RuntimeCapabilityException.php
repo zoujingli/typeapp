@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace app\common\bootstrap;
 
+use Type\Runtime\FailureInterface;
+
 /** profile 拒绝与普通业务输入错误分开，CLI 保留说明，HTTP 只返回稳定错误码。 */
-final class RuntimeCapabilityException extends \InvalidArgumentException
+final class RuntimeCapabilityException extends \InvalidArgumentException implements FailureInterface
 {
     private string $errorCode;
 

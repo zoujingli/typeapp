@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Type\Validate;
 
+use Type\Runtime\PublicFailureInterface;
+
 /**
  * 用稳定字段路径、错误码及HTTP状态表达失败；框架不将原始输入写入消息。
  */
-final class ValidationException extends \RuntimeException
+final class ValidationException extends \RuntimeException implements PublicFailureInterface
 {
     private array $errors;
 
@@ -34,7 +36,7 @@ final class ValidationException extends \RuntimeException
     }
 
     /**
-     * @return array<string, list<string>> 各字段已收集的错误，不包含原始字段值。
+     * @return array<string, list<string>> 各字段已收集的错误，不包含原始字段值
      */
     public function errors(): array
     {
@@ -58,7 +60,7 @@ final class ValidationException extends \RuntimeException
     }
 
     /**
-     * @return array<string, list<string>> 与 errors() 对齐的说明；没有编写说明时为空字符串。
+     * @return array<string, list<string>> 与 errors() 对齐的说明；没有编写说明时为空字符串
      */
     public function messages(): array
     {

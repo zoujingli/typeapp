@@ -37,6 +37,8 @@ TypeApp 应用的通信与基础并发必须使用 Swoole；线程与协程入�
 
 提供参数解析、受管执行作用域、资源池/租约以及截止/取消预算，不承担 HTTP 或数据库协议。`Type\Runtime\Arguments` 读取显式声明的命令选项；重复选项、未知选项、缺失值和整数越界都会抛出 `InvalidArgumentException`。
 
+失败契约由 `FailureInterface` 和 `PublicFailureInterface` 提供：前者只承载稳定 `errorCode()`，后者额外提供状态码和不含秘密的公开响应体。运行时任务异常实现前者但不依赖 HTTP；HTTP、CLI 和任务入口分别决定响应或退出码。
+
 ### 协程上下文与资源所有权
 
 `ExecutionScope` 保存一次请求、消息、命令或后台任务的有界字符串上下文、单调截止时间、取消信号和任务树预算。上下文适合放置 `request_id`、`tenant_id`、`operation_id` 等关联标识；连接、事务、Socket、可变业务对象和大载荷必须由当前作用域登记或通过受控参数传递，不能放进进程全局变量。

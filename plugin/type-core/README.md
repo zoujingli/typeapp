@@ -1,6 +1,6 @@
 # type-core
 
-当前 `main` 新增的业务事件通过 `BusinessEvents` 在当前 `ExecutionScope` 内同步派发，尚未包含 RC14。应用在 `application.events` 明确声明事件类及有序监听关系，构建器沿统一服务图生成直接调用；构造器可注入 `BusinessEvents`，无需运行时注册。无监听的已声明事件无操作，监听异常中止后续执行并直接传播；它与命令生命周期 `Events/Listener` 分开。提交后语义由调用方显式登记 `Db::afterCommit()`，需要持久投递时使用 Outbox/Queue。声明及边界见[共同装配说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/command-assembly.md#同步业务事件)。
+当前 `main` 新增的业务事件通过 `BusinessEvents` 在当前 `ExecutionScope` 内同步派发，尚未包含 RC14。应用在 `application.events` 明确声明事件类及有序监听关系，构建器沿统一服务图生成直接调用；构造器可注入 `BusinessEvents`，无需运行时注册。`EventDispatcher` 是业务事件的显式分发契约，`LifecycleEvent` 固定命令生命周期的 `READY/COMPLETED` 名称；不允许运行时扫描或自由字符串扩展。无监听的已声明事件无操作，监听异常中止后续执行并直接传播；它与命令生命周期 `Events/Listener` 分开。提交后语义由调用方显式登记 `Db::afterCommit()`，需要持久投递时使用 Outbox/Queue。声明及边界见[共同装配说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/command-assembly.md#同步业务事件)。
 
 ## 阅读与操作路径
 

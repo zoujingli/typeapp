@@ -52,9 +52,9 @@ final class Application
                 foreach ($resources as $resource) {
                     $current->open($resource);
                 }
-                $events->dispatch('ready', $configuration);
+                $events->dispatch(LifecycleEvent::READY, $configuration);
                 $result = $command->run($configuration, $arguments);
-                $events->dispatch('completed', $configuration);
+                $events->dispatch(LifecycleEvent::COMPLETED, $configuration);
                 return $result;
             });
         } catch (\Throwable $error) {
