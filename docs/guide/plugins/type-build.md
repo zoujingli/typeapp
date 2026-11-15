@@ -66,7 +66,7 @@ flowchart TB
 }
 ```
 
-每个程序只链接自己的 pdo_* 驱动；`alerts`、`exports` 会闭包启用 `queue`，`queue` 和 `scheduler` 会闭包启用 `redis`。因此物联中心默认 profile 会包含 phpredis；自定义 profile 关闭这些能力时，清单会记录 `rejected-capabilities`，运行到关闭能力会返回 `feature_unavailable`。未知 profile、数据库配置不匹配或关闭能力都会在构建/启动边界返回稳定错误。发布门禁逐项验证四平台 × 三 profile，实际版本与结果见[平台与验收](../platforms.md)。
+每个程序只链接自己的 pdo_* 驱动；`alerts`、`exports` 会闭包启用 `queue`，`queue` 和 `scheduler` 会闭包启用 `redis`。因此物联中心默认 profile 会包含 phpredis；自定义 profile 关闭这些能力时，清单会记录 `rejected-capabilities`，运行到关闭能力会返回 `feature_unavailable`。未知 profile、数据库配置不匹配或关闭能力都会在构建/启动边界返回稳定错误。RC19 发布门禁逐项验证 Linux x64、Linux ARM64、macOS ARM64 × 三 profile；Windows 只保留诊断，实际版本与结果见[平台与验收](../platforms.md)。
 
 候选清单中的 `size-breakdown` 读取最终封存文件的真实区段：`total` 与下载字节数一致，`code` 是可执行区段，`data` 是其余字节，`frontend` 是内嵌 `web/` 原文字节，`native` 是静态归档输入大小。后两者不能与 code/data 重复相加。Linux 不保留调试或非必要符号区段，Windows 不保留 PDB 调试目录，macOS 执行 `strip -x` 后保留必需外部符号。体积增长门禁及测量边界见[构建身份](https://github.com/zoujingli/typeapp/blob/main/docs/development/build-identity.md)。
 
@@ -158,11 +158,11 @@ php vendor/bin/type --inspect build/type-example
 
 ## 内置 Swoole 与运行依赖
 
-`type-build` 的 Composer 分发内容包含四平台 Swoole 共享模块、清单和原始许可证。当前源码固定 6.3 开发快照 `81404909`（运行时字符串 `6.3.0RC1`），不标为正式 6.3.0。主仓位置是 `plugin/type-build/resources/swoole/`，独立应用通常安装在 `vendor/zoujingli/type-build/resources/swoole/`；构建组件按自身安装位置查找，不依赖应用根目录或当前工作目录。应用无需复制主仓目录，也无需增加 `resources` 声明；根目录 `build/` 继续只保存不入仓的生成产物。
+`type-build` 的 Composer 分发内容包含已构建平台的 Swoole 共享模块、清单和原始许可证。当前源码固定 6.3 开发快照 `81404909`（运行时字符串 `6.3.0RC1`），不标为正式 6.3.0。主仓位置是 `plugin/type-build/resources/swoole/`，独立应用通常安装在 `vendor/zoujingli/type-build/resources/swoole/`；构建组件按自身安装位置查找，不依赖应用根目录或当前工作目录。应用无需复制主仓目录，也无需增加 `resources` 声明；根目录 `build/` 继续只保存不入仓的生成产物。
 
 公共 `type-build` 开发分支已包含上述资源，并完成独立安装与字节核对。应用提交 `composer.lock` 固定实际版本；旧锁文件指向不含清单的分发版本时，须先受控更新再使用默认内置模块。
 
-本轮源码升级及逐平台模块状态见[构建输入](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)；上述历史公开消费不代表新版模块已完成四平台重建或分发。
+本轮源码升级及逐平台模块状态见[构建输入](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)；上述历史公开消费不代表 RC19 候选模块已完成所有目标平台重建或公开分发。
 
 预编译模块固定使用 **PHP 8.5.12、ZTS、非 debug、64 位 ABI**。当前主仓源码工具链为 TypePHP 固定开发快照（0.9.6）、PHPX 2.9.8，准确版本以应用的工具链锁和 Composer 锁文件为准。源码升级进度与已公开 Release 分开记录，见[当前平台状态](../platforms.md#当前平台状态)。
 
@@ -209,7 +209,7 @@ sequenceDiagram
 
 匹配模块的选择无需联网，也无需另行下载或编译 Swoole；PHP SDK、PHPX 和其他依赖仍需准备，Composer 安装及整个构建不因此自动离线。组件安装也不会自动修改开发 PHP 的 ini；`type dev` 所用 CLI 仍需加载匹配的扩展。
 
-所选清单和模块进入构建身份，应用产物只收集当前平台选中的模块及实际依赖，不会携带全部四平台模块。再分发须保留适用的原始许可证，见[许可证与归属](../licensing.md#第三方边界)。源码、摘要、依赖和维护者的 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 重建入口见[资源说明](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。
+所选清单和模块进入构建身份，应用产物只收集当前平台选中的模块及实际依赖，不会携带其他平台模块。再分发须保留适用的原始许可证，见[许可证与归属](../licensing.md#第三方边界)。源码、摘要、依赖和维护者的 `TYPE_SWOOLE_BUILD_FROM_SOURCE=1` 重建入口见[资源说明](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。
 
 这些 `.so/.dll` 是共享扩展构建输入，不能用于静态链接。单程序构建使用按 profile 生成并校验的静态 SDK 归档；每次发布都以最终程序完成对应数据库及部署验收。实际可下载版本与产物形态见[构建与部署](../deployment.md#单程序交付约定)。
 
@@ -295,7 +295,7 @@ php vendor/bin/type verify-package build/example-release "$TYPE_RELEASE_SHA256"
 
 运行包包含匹配 PHPX/libphp 和实际原生扩展，不包含 Composer、编译 SDK 或业务 PHP 回退入口。生产资源与开发工具分开，平台可用性以该版本实际验收为准。
 
-发布工作流在同一源码基线上执行四平台默认原生 CI、12 个数据库 profile 静态程序隔离部署、公共组件与模板分发。各平台最终程序在隔离验收中禁止读取构建源码与 SDK、执行开发工具；公开下载摘要必须与候选一致。独立组件与模板记录各自入口和产物。已发布版本、准确提交、SDK 与限制见[平台与验收](../platforms.md)；历史目录包维护入口不进入新的单程序候选。
+发布工作流在同一源码基线上执行三平台默认原生 CI、9 个数据库 profile 静态程序隔离部署、公共组件与模板分发；Windows 仅执行诊断。各平台最终程序在隔离验收中禁止读取构建源码与 SDK、执行开发工具；公开下载摘要必须与候选一致。独立组件与模板记录各自入口和产物。已发布版本、准确提交、SDK 与限制见[平台与验收](../platforms.md)；历史目录包维护入口不进入新的单程序候选。
 
 ## 常见问题
 

@@ -39,7 +39,7 @@ composer require zoujingli/type-scheduler:1.0.0-rc.19
 
 ## 应用自动装配
 
-本节的统一 `application.schedules` 装配属于开发版，需要当前 `type-build` 与运行组件配套使用；RC14 使用其包内的登记入口。首次理解调度行为可直接运行下方[底层接口与角色示例](#底层接口与角色示例)。
+本节的统一 `application.schedules` 装配属于 RC19 候选，需要同批 `type-build` 与运行组件配套使用；历史 RC14 使用其包内登记入口。首次理解调度行为可直接运行下方[底层接口与角色示例](#底层接口与角色示例)。
 
 应用安装 `type-core`，开发依赖安装 `type-build`；scheduler 组件本身不强制依赖 core。Task 保持 `run(TaskContext $context): array`，具体类型构造依赖自动推导。接口和标量歧义使用统一 `application.bindings`，不手写任务工厂列表。
 
@@ -85,7 +85,7 @@ $scheduler->tick();
 
 两个已编译任务每分钟分别清理管理端、客户端满 180 天的审计，每次每端至多 100 条；历史返回实际删除数量及是否还有积压。普通 `serve` 不自动启动调度。`work` 的次数和间隔明确有界，可由服务管理器监督；不接受 shell 命令或源码路径。不同部署使用不同 `APP_SCHEDULER_NAMESPACE`，同一部署的多个调度角色保持相同命名空间以共享游标。
 
-调度 Redis 需要持久化和 `noeviction`，可以与同策略的可靠队列共用服务，但不能放在可淘汰的缓存实例。Redis 游标与数据库事务不是跨资源原子提交；中断任务按组件规则记为待核对，清理本身可幂等重跑。关闭 `scheduler` 或 `redis` 的 profile 会明确返回 `feature_unavailable`。这个入口已随 `v1.0.0-rc.14` 的 12 个 profile 程序分别通过同产物业务回归；该结果不改写历史版本的验收范围。
+调度 Redis 需要持久化和 `noeviction`，可以与同策略的可靠队列共用服务，但不能放在可淘汰的缓存实例。Redis 游标与数据库事务不是跨资源原子提交；中断任务按组件规则记为待核对，清理本身可幂等重跑。关闭 `scheduler` 或 `redis` 的 profile 会明确返回 `feature_unavailable`。这个入口的历史 RC14 十二 profile 回归结果仅作为历史证据；RC19 需按三平台九 profile 重新验收。
 
 此例在 Asia/Shanghai 每天 09:00 触发报表任务，单次运行只执行一次 tick。先准备安全的本地状态目录，再按[运行声明式示例](../components.md#运行声明式示例)使用带参数启动器。
 
@@ -214,7 +214,7 @@ FileStateStore 使用同机本地文件与稳定 .lock，写临时文件后同�
 
 当前开发版若在保存 `running` 时因容量等原因失败，不执行任务工厂，关闭本次空作用域并释放状态锁。此时 `ready=false`、`state=stopped`、`in_flight=0`，`storage_failures` 增加；只有实际资源尚未关闭的任务才继续占用在途额度。文件容量拒绝保留原状态与游标；应先核对存储错误、备份状态，再调整历史保留量或恢复写入条件后重启，不能直接清空游标。外部 Redis 写入结果未知时仍需对账，不能据此宣称写入已回滚。
 
-当前 `main` 的 FileStateStore 已接入共用本地文件校验，接受 Unix 绝对路径与 Windows 完整盘符路径，拒绝 UNC、设备路径、越界分量、链接及特殊文件。路径失败保持 `TYPE_SCHEDULER_STORE`，不自动改建目录或清空状态；父目录须由受信任账户管理。RC14 仍使用旧路径校验；Windows 真实文件、锁与原子替换尚需专项验收。多主机协调使用 RedisStateStore。
+RC19 候选的 FileStateStore 已接入共用本地文件校验，接受 Unix 绝对路径与 Windows 完整盘符路径，拒绝 UNC、设备路径、越界分量、链接及特殊文件。路径失败保持 `TYPE_SCHEDULER_STORE`，不自动改建目录或清空状态；父目录须由受信任账户管理。历史 RC14 仍使用旧路径校验；Windows 真实文件、锁与原子替换仍需专项验收。多主机协调使用 RedisStateStore。
 
 新执行者把遗留 running 标为 interrupted，保留身份供对账，该次不会自动重试。任务失败也不自动重试；有重试需要时显式投递[队列](type-queue.md)，仍以业务稳定 ID 幂等。
 
@@ -263,7 +263,7 @@ work 3 1000 总共检查三轮，轮间相隔 1000 毫秒，不代表必然执�
 
 `stop($drainSeconds = 5.0)` 取消 ready、停止后续 tick 和本轮剩余补跑；不能撤销已执行外部效果。`statistics()` 提供 triggered、failed、interrupted、lease_conflicts、storage_failures 和 limit_reached 等有界计数。
 
-当前 `main` 的命令轮询以 Swoole Channel 等待轮间间隔，调用 `stop()` 或存储失败撤销就绪时直接关闭通道唤醒，不周期检查停止状态；原生取消一次等待不会提前执行下一轮。物联中心 `app:schedule` 已接入 `ProcessSignals`，不必等完整轮间间隔才退出。独立应用仍由宿主登记信号并调用 `stop()`；Windows 控制事件还需宿主持续 `dispatch()`。在途工作以真实完成和持久记录为准，失去 Redis 租约后不能写成功状态；接管者保留 `interrupted` 供业务核对。这些新接线尚未包含 RC14。
+RC19 候选的命令轮询以 Swoole Channel 等待轮间间隔，调用 `stop()` 或存储失败撤销就绪时直接关闭通道唤醒，不周期检查停止状态；原生取消一次等待不会提前执行下一轮。物联中心 `app:schedule` 已接入 `ProcessSignals`，不必等完整轮间间隔才退出。独立应用仍由宿主登记信号并调用 `stop()`；Windows 控制事件还需宿主持续 `dispatch()`。在途工作以真实完成和持久记录为准，失去 Redis 租约后不能写成功状态；接管者保留 `interrupted` 供业务核对。这些接线不属于历史 RC14。
 
 Scheduler 不拥有应用另行创建的 RedisManager。停止调度后，仍需关闭外层 Redis Scope 和管理器。
 

@@ -107,7 +107,7 @@ echo json_encode($baseline, JSON_THROW_ON_ERROR) . "\n";
 | `DB_USERNAME` | type_example | 应用账号 |
 | `DB_PASSWORD` | 空字符串 | 启动时注入的密码 |
 
-`MysqlDriver` 还接受 `generation=1`、`role='writer'`、`caFile=null`；当前 `main` 在末尾新增 `timeZone='+00:00'`。generation 必须为正整数；role 为 writer 或 reader，reader 初始化会话只读策略。凭据轮换由 `DatabaseManager::rotate()` 搭配新驱动身份完成。
+`MysqlDriver` 还接受 `generation=1`、`role='writer'`、`caFile=null`；RC19 候选在末尾新增 `timeZone='+00:00'`。generation 必须为正整数；role 为 writer 或 reader，reader 初始化会话只读策略。凭据轮换由 `DatabaseManager::rotate()` 搭配新驱动身份完成。
 
 驱动设置 utf8mb4、所选时区（默认 UTC）、严格 SQL 模式、异常模式和原生预处理，连接选项的超时为 5 秒。该超时不等于所有 SQL 或任意内核 I/O 的端到端硬截止。
 

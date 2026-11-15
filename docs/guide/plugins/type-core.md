@@ -224,7 +224,7 @@ sequenceDiagram
 
 `onWorkerStop` 是零参数资源清理回调：Unix `serve()` 在实际 worker 的同步停止阶段调用；Windows `serve()` 在协程 HTTP 事件循环退出后调用，没有另一个 worker 进程。回调应关闭该宿主持有的连接池和日志，不再启动新工作。调用者仍在自己的 `finally` 中关闭自身资源；请求 Scope 不能代替长期资源所有者，强制终止不能保证清理回调执行。
 
-需要调用外部 HTTP/HTTPS 时，开发源码提供受管 `Http\Client`，由当前 `ExecutionScope` 管理 TLS、总期限、正文预算及关闭，返回 PSR 响应。此接口不在 RC14 中；完整示例、版本边界与错误码见[HTTP 客户端](../communications/http.md#受管-http-客户端（开发源码）)。
+需要调用外部 HTTP/HTTPS 时，开发源码提供受管 `Http\Client`，由当前 `ExecutionScope` 管理 TLS、总期限、正文预算及关闭，返回 PSR 响应。此接口属于 RC19 候选，历史 RC14 不包含；完整示例、版本边界与错误码见[HTTP 客户端](../communications/http.md#受管-http-客户端（开发源码）)。
 
 ## WebSocket
 

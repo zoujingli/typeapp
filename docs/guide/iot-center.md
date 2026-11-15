@@ -2,7 +2,7 @@
 
 物联中心是 TypeApp 的成品案例，采用单程序、多运行角色。Platform 管理平台与客户，System 管理当前 Tenant 的人员和系统设置，Center 管理该客户的设备及接入应用；通信层负责鉴权和原始消息路由，客户业务系统解释载荷。
 
-本文对应当前开发源码。历史发布版的程序、界面和原生证据保持各自身份；当前 Tenant 代码基线已在 macOS ARM64 完成全量 AOT、无源码运行、真实 TLS MQTT、三库管理链路和 Platform/System/Center 业务路由 smoke，正式平台/profile 矩阵及逐页面业务 CRUD 交互验收仍未完成。设计取舍见[架构与界面设计](../development/iot-control-client-design.md)，实际验证入口见[验收说明](../development/test-entrypoints.md)。
+本文对应当前开发源码。历史发布版的程序、界面和原生证据保持各自身份；当前 RC19 代码基线 `b485f0b` 已在 macOS ARM64 完成本地全量 AOT、无源码运行、真实 TLS MQTT、三库管理链路和 Platform/System/Center 业务路由 smoke；Linux 两个平台与 Windows 当前提交的正式 profile 矩阵、逐页面业务 CRUD 交互仍待验证。设计取舍见[架构与界面设计](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-control-client-design.md)，实际验证入口见[验收说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/test-entrypoints.md)。
 
 ## 职责与身份
 
@@ -13,7 +13,7 @@
 | Center | 当前 Tenant 的分类、设备、注册资格查看、接入应用、通信授权、连接观察及转配接收 | 复用该 Tenant 的 System 会话 |
 | 共享机制 | 可信入口、认证授权、审计、执行作用域及资源生命周期 | 按入口与真实身份确定范围 |
 
-每个客户拥有独立 System 账号域，同名账号可以分别存在，登录后不切换客户。Platform 身份不直接取得客户业务权限；模拟登录采用目标超管的实际权限，并保留真实平台操作者与来源会话。具体认证和 RBAC 合同集中在[身份与授权](../development/iot-identity.md)。
+每个客户拥有独立 System 账号域，同名账号可以分别存在，登录后不切换客户。Platform 身份不直接取得客户业务权限；模拟登录采用目标超管的实际权限，并保留真实平台操作者与来源会话。具体认证和 RBAC 合同集中在[身份与授权](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-identity.md)。
 
 ## 登录与 API
 
@@ -79,7 +79,7 @@ MQTT 运维使用 Platform 人员身份，不另行安装 Broker 人员后台。
 
 ## 页面、品牌与偏好
 
-一个 Vben 前端工程分别装配平台和客户工作区，使用 Vue Vben Admin 5.7.0 正式 Ant Design Vue 应用的认证布局、应用布局、表单、VXE 表格、抽屉、弹窗和偏好机制。列表筛选放在原生表格表单内，次要行操作收进菜单，设置按职责分组；标题、文字层级、间距及窄屏规则统一遵循[Web 标准](../standards/iot-web.md)。
+一个 Vben 前端工程分别装配平台和客户工作区，使用 Vue Vben Admin 5.7.0 正式 Ant Design Vue 应用的认证布局、应用布局、表单、VXE 表格、抽屉、弹窗和偏好机制。列表筛选放在原生表格表单内，次要行操作收进菜单，设置按职责分组；标题、文字层级、间距及窄屏规则统一遵循[Web 标准](https://github.com/zoujingli/typeapp/blob/main/docs/standards/iot-web.md)。
 
 工具栏提供原生菜单搜索、主题切换、偏好、语言、时区、全屏、刷新、通知、锁屏和用户入口。偏好覆盖布局、侧栏、面包屑、标签页、主题色、圆角、字体、无障碍显示、动画、动态标题与水印；通知没有业务消息时显示 Vben 官方空态，接入真实通知源后再提供消息操作。
 
@@ -300,11 +300,11 @@ Platform 签发需要 `platform.enrollments.issue`，换码与停用分别需要
 | `GET /t/{tenant_id}/center/enrollments` | 客户查看当前可信范围内的资格 |
 | `GET /t/{tenant_id}/center/enrollments/{authorization}` | 客户查看自身资格的真实绑定记录 |
 
-列表和绑定分页使用 `page`、`per_page`，默认 20 条，单页最多 100 条。注册码的注册期限只约束新的注册，不自动限制已注册设备的使用期；已注册设备撤权继续走设备生命周期。设备通过 `POST /public/devices/register` 消费资格，成功时一次性交付独立接入凭据。重复请求只确认原注册结果；秘密遗失由有权人员轮换恢复。完整请求、错误码与原始 Topic 见[设备注册教程](../development/iot-devices.md)。签发或注册成功均不代表设备已经建立网络连接。
+列表和绑定分页使用 `page`、`per_page`，默认 20 条，单页最多 100 条。注册码的注册期限只约束新的注册，不自动限制已注册设备的使用期；已注册设备撤权继续走设备生命周期。设备通过 `POST /public/devices/register` 消费资格，成功时一次性交付独立接入凭据。重复请求只确认原注册结果；秘密遗失由有权人员轮换恢复。完整请求、错误码与原始 Topic 见[设备注册教程](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-devices.md)。签发或注册成功均不代表设备已经建立网络连接。
 
 ## 设备接入与确认
 
-设备使用[公开注册教程](../development/iot-devices.md)取得凭据。注册期限限制新注册，设备使用期限限制既有关系，两者独立。客户工作区无权签发新资格。
+设备使用[公开注册教程](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-devices.md)取得凭据。注册期限限制新注册，设备使用期限限制既有关系，两者独立。客户工作区无权签发新资格。
 
 设备仅发布交付结果中的 `/raw/up`，仅订阅对应 `/raw/down`；应用需获得该设备当前关系下的接收/发送/订阅权限。通配符、跨客户与旧关系 Topic 被拒绝；共享订阅仍按去除组名前缀后的精确 Topic 授权，组名不扩大范围。MQTT 5、TLS、Keep Alive 30 秒和 Session Expiry 86400 秒属于本案例接入合同，具体 Topic 与身份以交付响应为准。
 
@@ -339,7 +339,7 @@ sequenceDiagram
 | `center:mqtt-fence`、`center:mqtt-fence-result` | 登记并核对精确旧运行代次的硬隔离依据；命令不执行基础设施隔离 |
 | `app:schedule once/history/work` | 审计维护调度及执行历史，运行计划需要持久 Redis |
 | `app:audit-clean` | Platform/System 审计的有界清理，按 `help` 指定域及批次 |
-| `center:wal`、`center:backup`、`center:recovery` | WAL、备份保留及恢复授权核对，见[恢复说明](../development/iot-recovery.md) |
+| `center:wal`、`center:backup`、`center:recovery` | WAL、备份保留及恢复授权核对，见[恢复说明](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-recovery.md) |
 
 具体配置统一在 `.env.example` 和 `config/app.php`。持久角色的 `IOT_MQTT_COMMAND` 必须指向同一个程序；内部 worker 不作为对外业务入口。未知或退役命令非零退出，旧 API 返回拒绝，不回退成首页。
 
@@ -349,7 +349,7 @@ sequenceDiagram
 
 ## 当前验收边界
 
-当前开发候选已有本机三库人员与 Center 管理 HTTP、前端类型检查、生产构建、全量 AOT、无源码运行、真实 PostgreSQL 同步后端和 TLS MQTT 设备链路验证；浏览器已完成登录入口、固定路径、窄屏、主题偏好和全部业务路由首屏 smoke，逐页面 CRUD、授权弹层和子域名浏览器交互仍须补验。正式平台/profile 矩阵仍须按[验收入口](../development/test-entrypoints.md)完成；单个字段或编译器探针不能代替整个产品。
+当前开发候选已有本机三库人员与 Center 管理 HTTP、前端类型检查、生产构建、全量 AOT、无源码运行、真实 PostgreSQL 同步后端和 TLS MQTT 设备链路验证；浏览器已完成登录入口、固定路径、窄屏、主题偏好和全部业务路由首屏 smoke，逐页面 CRUD、授权弹层和子域名浏览器交互仍须补验。正式平台/profile 矩阵仍须按[验收入口](https://github.com/zoujingli/typeapp/blob/main/docs/development/test-entrypoints.md)完成；单个字段或编译器探针不能代替整个产品。
 
 旧版本的源码、程序摘要和结果保持原身份。当前 PHP 8.5.12 的 Swoole 共享模块只在 macOS ARM64 重建并核验，Linux 与 Windows 目录中的模块仍是历史 ABI，严格选择门禁会拒绝它们；不能只更新摘要放行。当前候选尚未覆盖的容量、独立故障域和其他平台不列为通过；真实设备 TLS 链路已按验收记录完成，部署者应使用同一版本的文档、配置和程序。
 

@@ -6,7 +6,7 @@
 
 ## 环境与交付
 
-框架已集成 Swoole 的网络与并发能力，路由、配置和模型在构建期生成，生产代码经 TypePHP 全量编译。单程序构建使用经过校验的静态 SDK；`type-build` 另附四平台预编译 Swoole 共享模块，供开发及历史目录包回归使用。
+框架已集成 Swoole 的网络与并发能力，路由、配置和模型在构建期生成，生产代码经 TypePHP 全量编译。单程序构建使用经过校验的静态 SDK；`type-build` 另附按目标平台提供的 Swoole 共享模块，供开发及历史目录包回归使用。
 
 | 阶段 | 准备内容 |
 | --- | --- |
@@ -37,7 +37,7 @@ php dev.php check
 
 接着按[第一个应用教程](https://iots.top/#/guide/tutorial)完成迁移、配置令牌、真实 HTTP 操作与原生构建。
 
-检查 `composer.json` 中的准确组件版本与 `minimum-stability`，并在安装后用 `composer show 'zoujingli/type-*'` 核对版本和提交。新增组件也应选择同批版本；维护者入口见[版本准备与分发](https://github.com/zoujingli/typeapp/blob/main/docs/development/distribution-batches.md#版本-tag-自动发布)。RC14 的原模板没有固定完整传递依赖，使用旧版时以其 tag 内说明为准。
+检查 `composer.json` 中的准确组件版本与 `minimum-stability`，并在安装后用 `composer show 'zoujingli/type-*'` 核对版本和提交。新增组件也应选择同批版本；维护者入口见[版本准备与分发](https://github.com/zoujingli/typeapp/blob/main/docs/development/distribution-batches.md#版本-tag-自动发布)。历史 RC14 的原模板没有固定完整传递依赖，使用旧版时以其 tag 内说明为准。
 
 ### 复用本地模板
 
@@ -169,4 +169,4 @@ build/type-project-release licenses
 
 新增模块可用 `php vendor/bin/type make type-app.json module 'app\catalog\Product' --table=products --route=/products --role=users --version=002_products`，生成的匿名 `SchemaMigration` 会写入 `database/migrations/002_products.php`，检查并提交脚本后执行 `dev type-app.json migrate run`。完整单类/命令/Job/Task入口及鉴权边界见[开发通道脚手架教程](https://iots.top/next/#/guide/scaffolding)。生成的命令由模板入口委托共同装配执行。
 
-当前源码的[连续目录教程](https://iots.top/next/#/guide/tutorial)保留所选模板约束，按同批版本增加缓存、Queue 与 Scheduler，真实生成第二模块并验证租户、关系、三库冲突、事件和命名源 Outbox。[可靠性续篇](https://iots.top/next/#/guide/catalog-reliability)复用同一公开测试入口验证 Redis、持久游标、HTTPS 和停止；这些新增接口尚未包含 RC14。设置的 `DB_DRIVER` 与安装驱动不符时，检查、迁移和 HTTP 在连接前拒绝，错误码为 `runtime_profile_database_mismatch`。
+当前源码的[连续目录教程](https://iots.top/next/#/guide/tutorial)保留所选模板约束，按同批版本增加缓存、Queue 与 Scheduler，真实生成第二模块并验证租户、关系、三库冲突、事件和命名源 Outbox。[可靠性续篇](https://iots.top/next/#/guide/catalog-reliability)复用同一公开测试入口验证 Redis、持久游标、HTTPS 和停止；这些接口不属于历史 RC14。设置的 `DB_DRIVER` 与安装驱动不符时，检查、迁移和 HTTP 在连接前拒绝，错误码为 `runtime_profile_database_mismatch`。

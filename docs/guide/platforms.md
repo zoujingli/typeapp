@@ -8,7 +8,7 @@
 
 ## 当前平台状态
 
-当前主线 Tenant 代码基线为 `b683bd9`。本轮在 macOS ARM64 完成 PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8、Swoole 6.3.0RC1 的前端构建、全量 AOT、SQLite/MySQL/PostgreSQL 管理链路及真实 TLS MQTT 设备链路；完整证据见[当前 Tenant 重构验收记录](../evidence/tenant-refactor-20261114.md)。
+当前 RC19 候选代码基线为 `b485f0bbc8d7578749a1dce98d7586897f9e00fe`（tag `v1.0.0-rc.19`）。本地 macOS ARM64 已用 PHP 8.5.12 ZTS、TypePHP `c5599c5c`、PHPX 2.9.8、Swoole 6.3.0RC1 完成前端构建、全量 AOT、SQLite/MySQL/PostgreSQL 管理链路及真实 TLS MQTT 设备链路；本轮本地临时产物已清理，公开候选仍需按 CI 回执复核；可复核的源码和业务范围见[当前 Tenant 重构验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/tenant-refactor-20261114.md)。
 
 | 平台 | 当前提交的实际结果 | 当前边界 |
 | --- | --- | --- |
@@ -16,11 +16,11 @@
 | Linux x64 / ARM64 | 本轮未用当前提交重跑正式矩阵 | 不能使用历史工作流或其他提交的结果替代 |
 | Windows x64 | 本机没有 Windows runner、PowerShell、PE SDK 和 Windows 数据库 | Windows SDK、PE 构建及三库应用链路未验证 |
 
-当前发布平台/profile 矩阵仍按本页和对应 Actions 回执核对；Windows 诊断失败不改变 Linux/macOS 发布附件范围。历史发布版的四平台记录继续保留在下方，不能作为当前提交的通过证据。
+当前发布平台/profile 矩阵仍按本页和对应 Actions 回执核对；RC19 只有 tag，尚未创建 GitHub Release。Windows 诊断失败不改变 Linux/macOS 候选范围；历史发布版的四平台记录继续保留在下方，不能作为当前提交的通过证据。
 
 ## 历史发布状态
 
-当前公开版本为 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14)。同一源码已完成四平台完整验收，四个平台各提供 `sqlite`、`mysql`、`pgsql` 程序；12 个最终程序均完成对应数据库的隔离部署和公开下载摘要核验。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
+历史已公开版本为 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14)；当前 RC19 只有 tag，尚未公开 Release。同一源码已完成四平台完整验收，四个平台各提供 `sqlite`、`mysql`、`pgsql` 程序；12 个最终程序均完成对应数据库的隔离部署和公开下载摘要核验。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
 
 以下记录 2026-11-07 历史工作流实际使用的源码身份：
 

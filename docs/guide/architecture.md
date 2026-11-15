@@ -19,7 +19,7 @@ flowchart TB
   Native --> OS["目标操作系统"]
 ```
 
-这张图描述职责归属。交付形态是一个主程序，配置独立维护；四个平台分别构建三个数据库 profile，每次部署只选择一个匹配程序。当前公开版本与实际验收范围集中在[构建与部署](deployment.md#当前构建状态)。
+这张图描述职责归属。交付形态是一个主程序，配置独立维护；RC19 候选按 Linux x64、Linux ARM64、macOS ARM64 三个平台分别构建 `sqlite`、`mysql`、`pgsql` profile，每次部署只选择一个匹配程序，Windows x64 当前只做诊断。当前候选版本与实际验收范围集中在[平台与验收](platforms.md)和[构建与部署](deployment.md#当前构建状态)。
 
 | 层次 | 负责什么 | 由谁维护 |
 | --- | --- | --- |
@@ -100,7 +100,7 @@ TypeApp 优先复用 PSR、Swoole 以及现有 `ExecutionScope`、`ManagedResour
 
 HTTP、WebSocket、TCP、UDP、MQTT 保留各自协议入口和失败语义，只共用生命周期、资源预算、统计和关闭约定。HTTP 与 WebSocket 共用端口时由同一个 Swoole Server 持有监听，不引入额外的统一 Transport 或 Server 管理器。
 
-开发分支的 HTTP、命令、Job 与调度入口共用同一装配图，事务与缓存声明在加载前转换到原 Service 类型。每次请求或任务在自己的作用域取得服务，受管子协程重新创建作用域服务；单例不能持有请求状态。标准开发入口与 AOT 使用同一生成代次，详见[应用装配](https://github.com/zoujingli/typeapp/blob/main/docs/development/command-assembly.md)和[声明转换](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)。RC14 保持旧版入口，默认站点与 `/next/` 分别展示发布版和开发版；新能力的实际验收范围见[框架开发闭环](roadmap.md#框架开发闭环)。
+开发分支的 HTTP、命令、Job 与调度入口共用同一装配图，事务与缓存声明在加载前转换到原 Service 类型。每次请求或任务在自己的作用域取得服务，受管子协程重新创建作用域服务；单例不能持有请求状态。标准开发入口与 AOT 使用同一生成代次，详见[应用装配](https://github.com/zoujingli/typeapp/blob/main/docs/development/command-assembly.md)和[声明转换](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)。发布站点根路径固定候选文档，`/next/` 展示开发通道；RC14 仅在历史版本段保留。
 
 ## 构建期与运行期
 
@@ -126,7 +126,7 @@ TypePHP 是核心编译技术，承担从 PHP 到 C++ 再到原生程序的编�
 
 物联中心的前端在构建侧冻结依赖并生成 `dist`，由 `type-build` 转为 C++ 常量随程序链接；安装命令按资源清单写入应用根 `public/`，运行时通过既有 HTTP 入口提供页面与 API。页面文件、外置配置和持久数据各自维护。普通启动不解包资源，静态构建将非系统运行库直接链接进程序；两种内置能力分别验收。
 
-单程序构建使用经过校验的静态 SDK，其中包含 Swoole 和实际原生依赖，链接时进入主程序。构建组件另附四平台预编译 Swoole 共享模块、清单和许可材料，用于开发及历史目录包回归；这些模块不作为当前单程序的外置部署文件。SDK、ABI 与覆盖规则见[type-build](plugins/type-build.md#内置-swoole-与运行依赖)。
+单程序构建使用经过校验的静态 SDK，其中包含 Swoole 和实际原生依赖，链接时进入主程序。构建组件另附按平台提供的 Swoole 共享模块、清单和许可材料，用于开发及共享库回归；这些模块不作为当前单程序的外置部署文件。SDK、ABI 与覆盖规则见[type-build](plugins/type-build.md#内置-swoole-与运行依赖)。
 
 全量 AOT 覆盖框架、业务、生成代码与实际安装的生产 PHP 依赖；仅作开发用途的构建和测试工具不因此进入应用产物。当前约定允许固定 Swoole 扩展的官方内置 PHP 库按官方机制加载，并把其版本、摘要和构建开关纳入产物身份；该库仍是 PHP 实现，这个例外不适用于业务、Plugins 或其他第三方 PHP 源码。
 

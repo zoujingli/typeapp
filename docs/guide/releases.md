@@ -2,19 +2,19 @@
 
 版本由主仓的不可变 tag 驱动：`vX.Y.Z` 是正式版本，`vX.Y.Z-rc.N` 是候选版本。一次发布关联同一主仓提交、组件、应用模板和 Linux x64、Linux ARM64、macOS ARM64 三个平台的数据库 profile 矩阵；Windows 只保留诊断工作流，不生成 RC 附件。RC 标记为预发布，不成为稳定最新版。
 
-[v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14) 已公开为预发布版本。四平台 × `sqlite`、`mysql`、`pgsql` 的 12 个单文件程序、15 个组件与应用模板均通过同批发布门禁；17 个 Release、16 个 Packagist 版本及全部公开附件已回读核对。固定源码、工具链与原生验证见[升级验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。RC13 的标签、附件和验收身份保持不变。
+当前候选为 `v1.0.0-rc.19`，tag 固定到 `b485f0b`，目标为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个单文件程序；Windows x64 只保留诊断。GitHub Release、附件和 Packagist 回读尚未完成，不能使用“已公开”措辞。历史 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14) 的四平台十二程序结果保留在[升级验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。RC13 的标签、附件和验收身份保持不变。
 
 每个“平台 × profile”下载一个可执行文件，外置配置独立维护。PHP、PHPX、Swoole 等非系统原生库已静态链接，普通启动不释放运行库。历史 RC7 的目录归档与旧标签保持原样，其使用方式和验收身份保留在[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
-本轮发布目标为 **RC19**，当前仅对 Linux x64、Linux ARM64、macOS ARM64 生成发布候选；Windows 原生工作流保留为诊断，不生成版本附件。下面的 RC19 安装命令在对应 Release 公开后使用；RC14 的源码、标签和验收结论保持原身份。
+本轮候选为 **RC19**，只对 Linux x64、Linux ARM64、macOS ARM64 生成发布候选；Windows 原生工作流保留为诊断，不生成版本附件。下面的 RC19 安装命令必须等 GitHub Release 和附件实际公开后使用；RC14 的源码、标签和验收结论保持原身份。
 
 RC15 的独立脚手架安装存在测试来源的版本声明冲突，Windows 教程还暴露了普通 embed 停服时类元数据提前释放的问题，未公开 Release。其标签保留原提交；修复后的模板消费与后续验收使用 RC19，不移动旧标签。生命周期修复及回归边界见[TypePHP 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md#embed-请求与模块生命周期)。
 
-RC16 被 Windows 的配置及声明生成契约检查和 PostgreSQL 教程投递验收阻止，未公开 Release。已修正生成路径身份、测试中的环境变量删除和快照链接夹具；教程改为沿用标准 Outbox 租约，避免领取和登记尚未完成就过期，依据见[租约诊断记录](../evidence/windows-tutorial-lease-20261016.md)。后续使用 RC19 重新完整验收，RC16 标签保持原源码。
+RC16 被 Windows 的配置及声明生成契约检查和 PostgreSQL 教程投递验收阻止，未公开 Release。已修正生成路径身份、测试中的环境变量删除和快照链接夹具；教程改为沿用标准 Outbox 租约，避免领取和登记尚未完成就过期，依据见[租约诊断记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/windows-tutorial-lease-20261016.md)。后续使用 RC19 重新完整验收，RC16 标签保持原源码。
 
-RC17 的十二个单程序和十二组教程候选已通过，但 Windows 完整串行任务达到两小时总时限，最后的 PostgreSQL 步骤被取消，未公开 Release。进入该步骤前已用时约 116 分钟；相同源码的独立应用复验中该步骤需要约 15 分钟。CI 总预算调整为三小时，单项编译与业务期限继续由验收入口约束；后续使用 RC19 完整复验，RC17 标签保持原身份。依据见[Windows 总预算记录](../evidence/windows-ci-budget-20261016.md)。
+RC17 的十二个单程序和十二组教程候选已通过，但 Windows 完整串行任务达到两小时总时限，最后的 PostgreSQL 步骤被取消，未公开 Release。进入该步骤前已用时约 116 分钟；相同源码的独立应用复验中该步骤需要约 15 分钟。CI 总预算调整为三小时，单项编译与业务期限继续由验收入口约束；后续使用 RC19 完整复验，RC17 标签保持原身份。依据见[Windows 总预算记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/windows-ci-budget-20261016.md)。
 
-## 从 RC14 升级到 RC19
+## 从历史 RC14 迁移到 RC19
 
 RC19 收入共同装配、Model 操作完善、原 Service 声明转换、通信修复及只读演示环境。升级前备份配置和数据，核对以下变化：
 
@@ -24,7 +24,7 @@ RC19 收入共同装配、Model 操作完善、原 Service 声明转换、通信
 | 只读演示 | 保留原账号体系，允许普通登录、退出和查询；其他匹配写路由返回 `403 demo_readonly`。CLI 同时拒绝业务消费、调度和维护写入；安装升级须停服切到维护环境 |
 | 事务与缓存声明 | 删除 `operations.classes`，调用原 Service 类型，通过标准准备入口加载本代转换结果。活动事务内 Cacheable 不使用共享缓存，CacheEvict 等待同数据源最外层确认提交 |
 | 组件与模板 | 统一选择 RC19 并提交锁文件；新模板已固定完整第一方版本闭包，驱动选择不会回填开发约束 |
-| 物联中心已有数据 | 停服备份后执行升级检查及必要迁移，再更新内嵌前端；不要对已有库重复执行首次安装 |
+| 物联中心已有数据 | 当前 Platform/System/Center 仅支持全新空库安装；旧安装会因安装身份或 schema 版本不兼容而拒绝接入，不执行隐式数据转换。需要保留数据时先备份并按现场迁移方案导出，再在新空库安装。 |
 
 环境以[运行环境](environment.md#运行环境)为准，声明转换见[操作声明](https://github.com/zoujingli/typeapp/blob/main/docs/development/operations.md)，数据及页面更新顺序见[构建与部署](deployment.md)。HTTP 客户端新增显式压缩头和作用域预算支持；WebSocket 新增握手信息、控制帧观察及关闭提交结果。协议边界见[type-core](plugins/type-core.md)，不把这些接口理解为自动重试、自动解压或新的设备协议。
 
@@ -51,7 +51,7 @@ flowchart TB
 
 当前架构的最终候选执行真实 MQTT 授权、设备注册、应用逐设备原始通信及维护调度，逐项记录同一程序摘要和日志摘要；业务回归与无源码隔离部署分别留证。旧版本的告警通知和导出验收保持历史身份，不计入新架构的能力清单。Windows 的 Redis 测试服务来自固定摘要的 Cygwin 构建，仅用于 Actions 专用实例，不安装为系统服务、不进入部署程序，也不构成 Redis 官方原生 Windows 支持声明。设备持久 MQTT 的 PostgreSQL 同步语义仍按既有完整业务门禁验证，普通 MQTT 授权测试不替代该语义。
 
-候选门禁还要求每个数据库 profile 使用同一程序通过 Demo 只读和真实 RC14 升级。旧程序和公开清单的身份固定在 `.github/upgrade-baseline.json`；升级从非空旧库开始，核对备份、分批转换、旧程序拒绝、数据保全、普通角色不增权及页面更新。PostgreSQL 候选另外执行双节点撤权转配和内部存储只读。回执缺失、程序摘要不同或旧版基线不符均阻止封存，不能用另一个程序的通过记录补齐。各平台实际结果以当次 Actions 回执为准。
+候选门禁要求每个数据库 profile 使用同一程序通过 Demo 只读、全新空库安装和旧安装拒绝。RC19 不把历史 RC14 非空库升级结果作为当前通过条件；需要保留旧数据时由现场单独备份和迁移，不能由程序隐式转换。PostgreSQL 候选另外执行双节点撤权转配和内部存储只读。回执缺失、程序摘要不同或旧版基线不符均阻止封存，不能用另一个程序的通过记录补齐。各平台实际结果以当次 Actions 回执为准。
 
 发布链保留各平台完整业务回归，并单独核验最终静态候选。Linux 两种架构调用 `static-linux.yml`，macOS 调用 `native-macos.yml` 的 `single-program` 范围；它们使用同一固定提交及前端清单。每个平台/profile 先构建并验证对应静态 SDK，再全量编译程序，以该文件完成对应数据库的无源码部署。分发门禁同时检查这些任务的成功状态、源码和执行轮次，只有旧共享库回归或静态核心探针成功不能继续发布。任一候选或重建材料失败均阻止发布。
 

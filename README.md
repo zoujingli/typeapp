@@ -4,9 +4,9 @@ TypeApp 是面向原生交付的 PHP 应用框架。用 PHP 编写业务，按�
 
 框架提供通信、数据、任务与资源管理能力。Swoole 作为内置原生运行库提供网络与并发支持，由构建流程管理并随应用交付，无需在部署端单独安装。TypePHP 和 Composer 用于构建，业务请求不依赖它们。
 
-**交付一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** 已公开的 [RC14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14) 按 Linux x64 / ARM64、macOS ARM64、Windows x64 × `sqlite`、`mysql`、`pgsql` 提供 12 个静态单程序；每个程序只包含对应 profile 的数据库驱动和已启用能力。按平台与数据库选择一个下载项；安装方法见[版本安装](docs/guide/releases.md)，系统基线与业务服务要求见[环境与依赖](docs/guide/environment.md)。
+**交付一个主程序文件，配置使用环境变量或外置文件，启动不释放运行库。** 当前 `v1.0.0-rc.19` 已固定到 tag 提交 `b485f0b`，目标矩阵为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个发布 profile；Windows x64 仅保留诊断，不生成本 RC 附件。RC19 当前只有 tag，GitHub Release 与下载附件尚未完成，不能按“已公开版本”使用；安装方法见[版本安装](docs/guide/releases.md)，系统基线与业务服务要求见[环境与依赖](docs/guide/environment.md)。
 
-文档站：[iots.top](https://iots.top)。新业务从 `type-project` 创建；主仓附带的物联中心展示框架如何组成业务产品。也可以访问[在线 Demo](https://demo.iots.top)，使用页面公布的演示身份体验物联中心；正式安装不会预置通用账号或默认口令。
+文档站：[iots.top](https://iots.top)。新业务从 `type-project` 创建；主仓附带的物联中心展示框架如何组成业务产品。也可以访问[在线 Demo](https://demo.iots.top)，使用页面公布的演示身份体验物联中心；Demo 是独立部署，版本、数据和账号以站点实际状态为准，不代表 RC19 Release 已公开。正式安装不会预置通用账号或默认口令。
 
 ## 从开发到运行
 
@@ -30,7 +30,7 @@ TypePHP 的编译流程和输入边界见[TypePHP 全量编译](docs/guide/typep
 
 构建组件另附 Linux x64 / ARM64、macOS ARM64、Windows x64 的 Swoole 共享模块，用于开发及共享库回归；生产单程序使用静态 SDK。当前源码固定 6.3 开发快照 `81404909`，运行时版本字符串为 `6.3.0RC1`，不是正式 6.3.0。官方稳定线 6.2.5 与当前 6.3 路线分叉；本项目继续沿 6.3 路线更新。模块重建进度见[构建输入](plugin/type-build/resources/swoole/README.md)。基础需求和已有入口见[基础能力](docs/guide/capabilities.md)，未完成项见[实现规划](docs/guide/roadmap.md)。
 
-RC14 的四平台回归、十二个单程序、组件与模板分发及公开消费结果见[升级验收记录](docs/evidence/typephp-upgrade-0.9.4.md)。RC 仍是预发布版本；当前 `main` 的后续改动按各自证据记录，不自动继承 RC14 的验收结论。
+RC19 的当前候选证据按平台和 profile 单独记录；macOS ARM64 已完成本地 AOT、三库管理链路和真实 TLS MQTT 验证，Linux 两个平台与 Windows 当前提交的完整发布矩阵仍待重跑。历史 RC14 的四平台、十二程序结果保留在[升级验收记录](docs/evidence/typephp-upgrade-0.9.4.md)，不能继承为 RC19 的通过结论。
 
 ## 快速开始
 
@@ -41,7 +41,7 @@ php dev.php help
 php dev.php check
 ```
 
-安装后提交应用的 `composer.lock`，固定实际依赖版本。[连续目录教程](docs/guide/tutorial.md)从同一 RC19 批次创建第二模块，再演练缓存、事件、Outbox、队列与调度；已有 RC14 应用继续使用原 tag 的说明，升级差异见[版本说明](docs/guide/releases.md#从-rc14-升级到-rc19)。生产构建还须准备目标平台的静态 SDK，按[构建与部署](docs/guide/deployment.md)执行 `composer build`。
+安装后提交应用的 `composer.lock`，固定实际依赖版本。[连续目录教程](docs/guide/tutorial.md)从同一 RC19 批次创建第二模块，再演练缓存、事件、Outbox、队列与调度；已有 RC14 应用继续使用原 tag 的说明，升级差异见[版本说明](docs/guide/releases.md#从-历史-rc14-迁移到-rc19)。生产构建还须准备目标平台的静态 SDK，按[构建与部署](docs/guide/deployment.md)执行 `composer build`。
 
 本地模板与 Git tag 创建方式见[快速开始](docs/guide/quickstart.md)。`dev-main` 跟进子仓开发分支，不一定与当前 RC 相同；按版本安装才能复现本批次。
 
@@ -59,7 +59,7 @@ php dev.php check
 plugin/type-*/       Plugins，可独立组合的 Composer 包
 templates/type-project/  独立业务应用起点
 app/                 成品案例物联中心（common / platform / system / center）
-web/                 物联中心 Vben Admin Pro 管理端
+web/                 物联中心 Vben Admin Pro 5.7.0 管理端（Vue 3.5.45 / Vite 8.3.8 / TypeScript 7.0.2）
 config/              成品案例的应用、数据库配置与路由声明
 docs/guide/          公开使用指南（发布到 iots.top）
 docs/development/    实现规范与验收方法，不进入公开站点

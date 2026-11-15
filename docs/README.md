@@ -27,7 +27,7 @@
   </div>
 </section>
 
-> **交付一个主程序文件，配置独立维护，启动不释放运行库。** 已公开的 RC14 按四个平台 × 三个数据库 profile 提供 12 个静态单程序，每次部署选择一个匹配的下载项。部署端无需安装 PHP、Swoole、Composer 或 Node.js；使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
+> **交付一个主程序文件，配置独立维护，启动不释放运行库。** 当前 `v1.0.0-rc.19` 已固定到 `b485f0b`，发布候选目标为三平台 × 三个数据库 profile，共 9 个静态单程序；Windows x64 只保留诊断，不生成 RC 附件。RC19 尚未创建 GitHub Release，下载链接在候选通过后才可使用。部署端无需安装 PHP、Swoole、Composer 或 Node.js；使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
 
 <div class="feature-grid">
   <div><span class="feature-number">01 / DEVELOP</span><h2>按业务组合</h2><p>路由、模型、通信与任务，<br>通过组件形成应用。</p></div>
@@ -39,7 +39,7 @@
 
 从 `type-project` 创建应用，用 Composer 安装所需的框架组件，再编译和验证自己的业务。先阅读[环境与依赖](guide/environment.md)区分开发机、构建机与部署机；[基础能力](guide/capabilities.md)帮助确定应用需要哪些组件。物联中心展示设备接入与多租户业务的组合方式。
 
-物联中心的 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14) 已完成四平台、三数据库 profile 验收及公开下载核验。前端编入主程序，首次安装同时准备账号和页面，后续显式更新托管静态文件。安装步骤见[版本下载](guide/releases.md)，页面更新与修复见[前端安装与更新](guide/deployment.md#前端安装与更新)。
+物联中心当前以 RC19 候选源码为准：前端在构建期编入主程序，首次安装同时准备账号和页面，后续由显式命令更新托管静态文件。RC19 的三平台九 profile 尚未形成公开 Release；安装步骤见[版本下载](guide/releases.md)，页面更新与修复见[前端安装与更新](guide/deployment.md#前端安装与更新)。历史 RC14 的公开下载与四平台验收保留在版本页。
 
 <div class="doc-paths">
   <a class="start-guide" href="#/guide/quickstart">
@@ -106,4 +106,4 @@ TypePHP 和 Composer 位于构建侧；生产运行执行已编译的业务与�
 
 应用模板和框架组件通过 Packagist 分发，Composer 自动解析传递依赖，无需逐一配置 Git 仓库。公开分发子仓保留源码、许可证与变更记录；可固定安装已发布的 RC，也可跟进开发分支，二者均不代表稳定版。交付范围以各平台实际验收为准。
 
-历史版本曾在 Linux x64 / ARM64、macOS ARM64、Windows x64 通过默认原生 CI；当前主线的实际范围以[平台与验收](guide/platforms.md#当前平台状态)和[当前 Tenant 重构验收记录](evidence/tenant-refactor-20261114.md)为准；Windows 仅保留诊断，不进入当前 RC 发布。本轮 macOS ARM64 已完成当前提交的 AOT、三库管理链路和真实 TLS MQTT 验证，Windows SDK 及正式平台/profile 矩阵仍未用当前提交重跑。全量编译指生产实现进入 TypePHP 的覆盖门槛，不等于测试覆盖率或所有 PHP 包兼容。
+历史版本曾在 Linux x64 / ARM64、macOS ARM64、Windows x64 通过默认原生 CI；当前主线的实际范围以[平台与验收](guide/platforms.md#当前平台状态)和[当前 Tenant 重构验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/tenant-refactor-20261114.md)为准；Windows 仅保留诊断，不进入当前 RC 发布。本轮 macOS ARM64 已完成当前提交的 AOT、三库管理链路和真实 TLS MQTT 验证，Windows SDK 及正式平台/profile 矩阵仍未用当前提交重跑。全量编译指生产实现进入 TypePHP 的覆盖门槛，不等于测试覆盖率或所有 PHP 包兼容。

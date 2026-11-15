@@ -12,7 +12,7 @@ TypeApp 的开发与构建组件：生成配置、路由和模型，审计完整
 
 profile 程序不携带独立的 `sqlite3`、`mysqli`、`pgsql` 扩展，也不携带 PHP `session`、`tokenizer`；物联中心使用 PDO、数据库会话及构建期源码解析。对应数据库的原生库仍随 PDO/Swoole 依赖保留，真实 embed 扩展表会拒绝未裁剪的 SDK。`all` 开发 SDK 与发布 profile 分开核验。
 
-发布链接裁剪未使用代码，封存身份前清理调试符号，再以最终字节计算摘要和体积。`v1.0.0-rc.14` 的发布门禁包含四平台 × 三数据库验收、组件消费和公开回读；通过后公开十二个主程序、摘要及发布清单。重建 SDK 与源码履约材料由 Actions Artifact 单独保存，不是部署依赖。最新已公开版本和矩阵的实际验收状态见[发布说明](https://iots.top/#/guide/releases)。
+发布链接裁剪未使用代码，封存身份前清理调试符号，再以最终字节计算摘要和体积。RC19 候选发布门禁目标为三平台 × 三数据库，Windows 仅诊断；通过后才公开九个主程序、摘要及发布清单。重建 SDK 与源码履约材料由 Actions Artifact 单独保存，不是部署依赖。历史 RC14 的公开版本和矩阵保留在[发布说明](https://iots.top/#/guide/releases)。
 
 ## 阅读与操作路径
 
@@ -206,6 +206,6 @@ php tests/operations.php
 
 ## Schema 冻结迁移
 
-当前 `main` 新增 `#[Type\Orm\Attribute\Schema]` 与 `php vendor/bin/type schema:prepare <声明.php>`，尚未包含 RC14。显式准备三库 SQL、协议和摘要后，将生成类的 `migration($driver)` 加入既有迁移列表；开发及 AOT 只核验并嵌入冻结结果，不同步在线结构。支持建表、增列、表与列改名、索引调整和原生删列；SQLite 不自动重建表，MySQL 非事务 DDL 保留部分生效与显式恢复。完整声明、字段语义、审查和状态/恢复调用见[Schema 教程](https://github.com/zoujingli/typeapp/blob/main/docs/development/schema.md)。
+RC19 候选包含 `#[Type\Orm\Attribute\Schema]` 与 `php vendor/bin/type schema:prepare <声明.php>`；历史 RC14 不包含。显式准备三库 SQL、协议和摘要后，将生成类的 `migration($driver)` 加入既有迁移列表；开发及 AOT 只核验并嵌入冻结结果，不同步在线结构。支持建表、增列、表与列改名、索引调整和原生删列；SQLite 不自动重建表，MySQL 非事务 DDL 保留部分生效与显式恢复。完整声明、字段语义、审查和状态/恢复调用见[Schema 教程](https://github.com/zoujingli/typeapp/blob/main/docs/development/schema.md)。
 
 `type make <构建配置> <module|model|input|service|controller|migration|command|job|task> <完整类名>` 生成可编辑业务源码，并复用正式路由与共同装配进行发布前检查。项目锁、拒绝覆盖、路径门禁、完整暂存及失败恢复由同一 Scaffolder 管理。模块生成原 Service、类型化输入、显式输出与新 Schema，任务生成固定身份/计划声明；完整命令、前置与恢复见[开发通道脚手架教程](https://iots.top/next/#/guide/scaffolding)，同一第二模块与 PHP/AOT 入口见[连续目录教程](https://iots.top/next/#/guide/tutorial)。

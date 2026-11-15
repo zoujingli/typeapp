@@ -78,7 +78,7 @@ flowchart LR
 
 设备领域使用 `Device`、`DeviceOwnership`、`DeviceCredential`、`DeviceConnection`、`DeviceEnrollment`、`DeviceEnrollmentBinding`、`ApplicationGrant` 和 `DeviceReassignment` Model；持久表均采用 `center_` 前缀。三类接入支撑事实都直接保存不可变 `tenant_id` 并由 ORM 绑定可信 Tenant。凭据历史和注册绑定在转配后仍归原 Tenant，设备只保留简单 `device_id` 外键；使用关系、注册资格和当前连接投影通过 Tenant 复合外键保持一致。业务读取和写入优先使用模型对象，运行观察和恢复进度分别由 `CenterRuntimeMetric`、`CenterRecovery` Model 承载；复合身份的恢复主体、批量撤权和协议状态属于基础设施投影并登记受限查询例外。
 
-Center 的结构由 `app/center/database/Migrations.php` 提供标准 `Type\Orm\Migration\Migration` 版本 `040_center_core`，由公共 `Schema::migrations()` 合并到 ORM 的 `Migrator` 计划；安装、`migrate status/run/history/recover` 使用同一锁、checksum 和失败恢复协议。由于当前声明式 `#[Schema]` 只覆盖普通字段与索引，Center 的复合外键、三库保留字和跨表建表顺序继续以已审查的 SQL 列表作为该 Migration 的编译输入，不另建模块安装入口。
+Center 的结构由 `database/migrations/040_center_core.php` 匿名 `SchemaMigration` 提供，TypePHP 构建期由 `MigrationCompiler` 编译到 `app/generated/Migrations`，公共 `Schema::migrations()` 将静态计划交给 ORM `Migrator`；安装、`migrate status/run/history/recover` 使用同一锁、checksum 和失败恢复协议。Center 的复合外键、三库保留字和跨表建表顺序继续以迁移脚本中的受控 Blueprint/SQL 作为编译输入，不另建模块安装入口。
 
 ## 验证
 

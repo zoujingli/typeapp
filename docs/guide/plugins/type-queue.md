@@ -49,7 +49,7 @@ composer require zoujingli/type-queue:1.0.0-rc.19
 
 ## 应用自动装配
 
-本节的统一 `application.jobs` 装配属于开发版，需要当前 `type-build` 与运行组件配套使用；RC14 使用其包内的登记入口。首次理解投递与处理可直接运行下方[底层接口与角色示例](#底层接口与角色示例)。
+本节的统一 `application.jobs` 装配属于 RC19 候选，需要同批 `type-build` 与运行组件配套使用；历史 RC14 使用其包内登记入口。首次理解投递与处理可直接运行下方[底层接口与角色示例](#底层接口与角色示例)。
 
 应用安装 `type-core`，开发依赖安装 `type-build`；队列组件本身仍不强制依赖 core。将实现 `Job::handle(JobContext $context, array $payload): void` 的业务类列入生产 sources，在 `type-app.json` 声明：
 

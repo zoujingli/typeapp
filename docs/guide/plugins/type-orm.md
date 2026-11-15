@@ -4,7 +4,7 @@
 
 提供受管数据库连接、不可变 Query、生成模型、关系、分页、事务、迁移和事务 Outbox。ORM 不选择数据库；安装一个驱动后使用同一公开入口，并保留数据库本身的能力差异。
 
-`v1.0.0-rc.14` 已通过新版工具链的四平台默认原生矩阵，覆盖 MySQL、PostgreSQL、SQLite 的 ORM 与应用场景；公开组件批次也完成准确版本和拆分提交的安装、全量 AOT 与三库集成。12 个静态 profile 程序分别完成所选数据库的隔离部署。独立 ORM、主应用及静态单程序各有自己的验收身份，实际范围见[平台支持表](../platforms.md#当前平台状态)。模型能力和物理连接复用的剩余边界仍按下文说明。
+RC19 候选已完成本地 macOS ARM64 的 ORM、三库管理链路、全量 AOT 和无源码运行验证；Linux x64/ARM64 与 Windows 当前提交的完整应用矩阵仍待 CI 复核。RC14 的四平台十二 profile 是历史公开结果，不能替代 RC19 证据。独立 ORM、主应用及静态单程序各有自己的验收身份，实际范围见[平台支持表](../platforms.md#当前平台状态)。模型能力和物理连接复用的剩余边界仍按下文说明。
 
 业务 CRUD 使用[Model 与关系](#models-relations-output)，查询和保存无需传入 `Connection`。框架从当前 Swoole 作用域选择端点并管理租约；静态 `search()`、自动租户隔离、默认读从写主及 `master()` 的配置和完整示例见[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md)。下面的显式连接和表查询用于基础设施与受控聚合。物理 PDO 复用和完整原生平台验收仍以实际验证结果为准。
 
@@ -28,7 +28,7 @@ flowchart TB
 
 上述扩展在开发与构建环境准备，生产单程序从匹配的静态 SDK 链接 Swoole 和所选数据库客户端。部署时只需程序、外置配置，以及所选数据库服务或 SQLite 数据目录，见[环境与依赖](../environment.md)。
 
-协程数据库等待需要对应的官方构建能力：MySQL 使用 mysqlnd 与网络 hook，PostgreSQL、SQLite 分别需要 Swoole 的 `--enable-swoole-pgsql`、`--enable-swoole-sqlite`。应用启动时调用 `CoroutineRuntime::enableIo()`，为已加载的 PDO 扩展启用可用 hook；生成的命令入口与 HTTP 宿主已接入。自定义入口在启动业务线程及协程前配置，`CoroutineRuntime::run()` 保留既定 hook，不在任务中改写进程配置。当前 `main` 在协程创建物理 PDO 前检查所选驱动：缺构建能力报 `swoole_pdo_hook_unavailable`，未启用所需 hook 报 `swoole_hook_startup_required`。同步工具不要求协程 hook，未使用的驱动不阻止连接；真实等待验收见[协程并发的成立条件](../database.md#协程并发的成立条件)。
+协程数据库等待需要对应的官方构建能力：MySQL 使用 mysqlnd 与网络 hook，PostgreSQL、SQLite 分别需要 Swoole 的 `--enable-swoole-pgsql`、`--enable-swoole-sqlite`。应用启动时调用 `CoroutineRuntime::enableIo()`，为已加载的 PDO 扩展启用可用 hook；生成的命令入口与 HTTP 宿主已接入。自定义入口在启动业务线程及协程前配置，`CoroutineRuntime::run()` 保留既定 hook，不在任务中改写进程配置。RC19 候选在协程创建物理 PDO 前检查所选驱动：缺构建能力报 `swoole_pdo_hook_unavailable`，未启用所需 hook 报 `swoole_hook_startup_required`。同步工具不要求协程 hook，未使用的驱动不阻止连接；真实等待验收见[协程并发的成立条件](../database.md#协程并发的成立条件)。
 
 标准应用入口负责启动期配置和受控业务线程的配置继承，普通业务只调用模型或 `Db`，无需自行启用 hook、创建连接或归还租约。
 
@@ -50,7 +50,7 @@ composer require zoujingli/type-orm:1.0.0-rc.19
 
 模型的 PHP 属性名不能与 `Type\Orm\Model` 基类成员重名，包括私有成员。数据库列可保留原名，例如 `#[Column(name: 'state')] public string $status;`；业务使用 `status` 和生成的 `getStatus()`，完整构建输入在生成阶段检查此冲突。
 
-当前 `main` 已补充模型 `sum/avg/min/max`、`insertMany`、受管时间字段、`firstOrCreate`、`upsert/upsertAnyUnique`、关系写入句柄与所选 PDO hook 前置检查，尚未包含在 RC14 中。底层 Query 的 SQL 能力不自动获得模型约束。支持范围与待补入口见[常用能力边界](../database.md#常用能力边界)。
+RC19 候选已包含模型 `sum/avg/min/max`、`insertMany`、受管时间字段、`firstOrCreate`、`upsert/upsertAnyUnique`、关系写入句柄与所选 PDO hook 前置检查。底层 Query 的 SQL 能力不自动获得模型约束。支持范围与待补入口见[常用能力边界](../database.md#常用能力边界)。
 
 例如在独立应用的生产源码中声明：
 
@@ -518,4 +518,4 @@ Store 默认领取租约为 30000 毫秒，重放保留窗口为 604800 秒。�
 
 ## Schema 冻结迁移
 
-当前 `main` 新增 `#[Type\Orm\Attribute\Schema]` 与 `php vendor/bin/type schema:prepare <声明.php>`，尚未包含 RC14。显式准备三库 SQL、协议和摘要后，将生成类的 `migration($driver)` 加入既有迁移列表；开发及 AOT 只核验并嵌入冻结结果，不同步在线结构。支持建表、增列、表与列改名、索引调整和原生删列；SQLite 不自动重建表，MySQL 非事务 DDL 保留部分生效与显式恢复。完整声明、字段语义、审查和状态/恢复调用见[Schema 教程](https://github.com/zoujingli/typeapp/blob/main/docs/development/schema.md)。
+RC19 候选包含 `#[Type\Orm\Attribute\Schema]` 与 `php vendor/bin/type schema:prepare <声明.php>`。显式准备三库 SQL、协议和摘要后，将生成类的 `migration($driver)` 加入既有迁移列表；开发及 AOT 只核验并嵌入冻结结果，不同步在线结构。支持建表、增列、表与列改名、索引调整和原生删列；SQLite 不自动重建表，MySQL 非事务 DDL 保留部分生效与显式恢复。完整声明、字段语义、审查和状态/恢复调用见[Schema 教程](https://github.com/zoujingli/typeapp/blob/main/docs/development/schema.md)。

@@ -88,7 +88,7 @@ function main(): void
 
 `RedisManager` 接收连接名称到 `RedisConfiguration` 的映射；名称如 default、cache、reliable。实际连接在工作进程第一次借用时创建。
 
-当前 `main` 可通过第三参数注入 `Type\Runtime\DeploymentBudget`，让同一执行线程的命名连接和用途池共用部署分额；多个管理器必须显式传同一个预算对象。每个池的独立容量仍生效，所有者结束时关闭管理器，真实连接关闭后才释放额度。该新增参数尚未包含 RC14，计算和部署责任见[部署连接预算](../configuration.md#部署连接预算)；它不会自动限制集群实例数。
+RC19 候选可通过第三参数注入 `Type\Runtime\DeploymentBudget`，让同一执行线程的命名连接和用途池共用部署分额；多个管理器必须显式传同一个预算对象。每个池的独立容量仍生效，所有者结束时关闭管理器，真实连接关闭后才释放额度。该参数不属于历史 RC14，计算和部署责任见[部署连接预算](../configuration.md#部署连接预算)；它不会自动限制集群实例数。
 
 | `RedisConfiguration` 参数 | 默认值 | 单位/限制 |
 | --- | --- | --- |
@@ -138,7 +138,7 @@ try {
 
 输出保留 Redis 的原始嵌套结构：流键、消息 ID 和字段值列表，不自动转成业务对象。`XREADGROUP` 还要求应用预先建立消费组，并负责处理确认、重试和幂等；需要受管任务投递时使用 [type-queue](type-queue.md)。
 
-当前 `main` 已修复 `XREADGROUP` 选项换序的用途检查：`BLOCK` 放在 `GROUP` 前后均需阻塞连接，组名或消费者名为 `BLOCK/STREAMS` 仍按普通数据处理。该修复尚未包含在 RC14。普通命令、pipeline 和事务批次中的阻塞读取返回 `blocking_command`，`outcome` 为 `NOT_STARTED`；批次在发送前整批检查，因此不会先执行排在它前面的 `SET`。参数通过检查后的服务器错误仍遵循下面的部分执行语义。
+RC19 候选已修复 `XREADGROUP` 选项换序的用途检查：`BLOCK` 放在 `GROUP` 前后均需阻塞连接，组名或消费者名为 `BLOCK/STREAMS` 仍按普通数据处理。历史 RC14 不包含该修复。普通命令、pipeline 和事务批次中的阻塞读取返回 `blocking_command`，`outcome` 为 `NOT_STARTED`；批次在发送前整批检查，因此不会先执行排在它前面的 `SET`。参数通过检查后的服务器错误仍遵循下面的部分执行语义。
 
 ## 常用命令与 pipeline
 

@@ -2,7 +2,7 @@
 
 部署已验证的 TypeApp 单程序时，不需要另行安装 PHP、Swoole、Composer、Node.js 或编译工具。非系统原生运行库由构建流程校验并静态链接进程序；部署者准备匹配的操作系统与系统库基线、配置及应用实际使用的业务服务。
 
-公开 RC14 提供四平台 × `sqlite`、`mysql`、`pgsql` 三个 profile，共 12 个单文件程序，均已完成新版工具链的同产物验收及公开下载核验。部署时只选择其中一个匹配平台和数据库的程序，配置可由环境变量或外置 `.env` 提供。普通启动不释放运行库；物联中心的页面由显式安装命令写入 `public/`。文件形态、系统基线和边界见[构建与部署](deployment.md#当前构建状态)。
+RC19 候选目标为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个单文件程序；Windows x64 仅保留诊断，RC19 尚未创建公开 Release。部署时只选择一个匹配平台和数据库的程序，配置可由环境变量或外置 `.env` 提供。普通启动不释放运行库；物联中心的页面由显式安装命令写入 `public/`。文件形态、系统基线和边界见[构建与部署](deployment.md#当前构建状态)。
 
 ## 运行环境
 
@@ -16,7 +16,7 @@
 
 原生入口不因 `APP_ENV=dev` 获得开发调试权限。演示环境在已匹配的 HTTP 路由上拒绝业务写入，返回 `403 demo_readonly`；命令只开放查询白名单，内部 MQTT 存储 worker 再按动作限权。前端禁用按钮用于提示，无法替代后端限制。维护写入须停服并显式切换环境，外部备份和日志轮转可以继续。详细操作见[演示部署](deployment.md#只读演示部署)。
 
-这套规则适用于包含环境迁移的构建；公开 RC14 仍使用 `development/production`。升级时将旧配置明确迁为 `dev/prod`，不能直接给 RC14 配置新值。新程序拒绝旧值及未知值，不自动猜测环境。
+这套规则适用于 RC19 候选和当前开发构建；历史 RC14 仍使用 `development/production`。升级时将旧配置明确迁为 `dev/prod`，不能直接给 RC14 配置新值。新程序拒绝旧值及未知值，不自动猜测环境。
 
 ## 数据库 profile
 
@@ -24,7 +24,7 @@
 
 当前物联中心三个 profile 声明 `web`、`mqtt`、`iot`、`scheduler`，维护调度仍需 Redis。Platform、System 与 Center 管理、设备注册、应用密钥和逐设备授权支持三库；设备 MQTT 的可靠持久接入要求 PostgreSQL 同步后端，应选择 `pgsql`。`sqlite`、`mysql` 不提供同等持久 MQTT 或集群恢复能力。
 
-维护调度使用 `APP_SCHEDULER_REDIS_*`，命名空间在同一部署内保持稳定。它由显式 `app:schedule` 命令执行，不会随 HTTP 启动自动清理数据。物联中心未装配通用业务查询缓存；独立应用需要同时具备 `cache` 构建能力与实际调用者，见[数据库与缓存](configuration.md#数据库与缓存)。旧遥测、告警、通知、导出和设备模拟器已退出当前案例；公开 RC14 的原功能与证据保持不变。
+维护调度使用 `APP_SCHEDULER_REDIS_*`，命名空间在同一部署内保持稳定。它由显式 `app:schedule` 命令执行，不会随 HTTP 启动自动清理数据。物联中心未装配通用业务查询缓存；独立应用需要同时具备 `cache` 构建能力与实际调用者，见[数据库与缓存](configuration.md#数据库与缓存)。旧遥测、告警、通知、导出和设备模拟器已退出当前案例；历史 RC14 的原功能与证据保持不变。
 
 ## 按使用阶段准备环境
 
@@ -42,11 +42,11 @@
 
 ## 构建机如何复用内置运行库
 
-构建组件的 `resources/swoole/` 保存四平台 Swoole 模块、清单和原始许可证。当前源码固定 6.3 开发快照 `81404909`（运行时字符串 `6.3.0RC1`），包含 RC1 后续修复，不标为正式 6.3.0。各平台是否完成该基线重建，以[模块说明](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)为准。独立应用安装包含这些资源的 `type-build` 版本后，可直接从组件安装位置复用，无需复制主仓目录或另行下载、编译 Swoole。生产单程序则在构建期静态链接匹配的运行库，部署机无需人工安装这些扩展。
+构建组件的 `resources/swoole/` 保存已提供目标平台的 Swoole 模块、清单和原始许可证。当前源码固定 6.3 开发快照 `81404909`（运行时字符串 `6.3.0RC1`），包含 RC1 后续修复，不标为正式 6.3.0。各平台是否完成该基线重建，以[模块说明](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)为准。独立应用安装包含这些资源的 `type-build` 版本后，可直接从组件安装位置复用，无需复制主仓目录或另行下载、编译 Swoole。生产单程序则在构建期静态链接匹配的运行库，部署机无需人工安装这些扩展。
 
 | 内置模块 | 构建匹配条件 |
 | --- | --- |
-| Linux x64 / ARM64 | PHP 8.5.10 ZTS、非 debug、64 位；Debian 12 / glibc 2.36 构建基线，不适用于 Alpine/musl |
+| Linux x64 / ARM64 | PHP 8.5.12 ZTS、非 debug、64 位；Debian 12 / glibc 2.36 构建基线，不适用于 Alpine/musl |
 | macOS ARM64 | 同一 PHP ABI；部署目标 15.0，已在 macOS 15 原生 ARM64 runner 通过默认矩阵 |
 | Windows x64 | 同一 PHP ABI；PHP 官方 VS17 ZTS SDK |
 
@@ -56,7 +56,7 @@ PHP 版本号和 ZTS 一致仍不足以保证二进制兼容：SDK 的编译选�
 
 这里的内置模块是构建输入，目前为共享库。Composer 安装不会修改本机 PHP CLI 的 ini，开发入口仍须加载匹配扩展。模块选择可以禁网执行，首次安装依赖和 SDK 准备仍有各自的网络要求。
 
-已发布的 `type-build:1.0.0-rc.14` 包含这些资源；模块、许可及 Git 属性的字节一致性和独立 Composer 消费均已核对。旧锁文件指向不含 `resources/swoole/manifest.json` 的版本时，须受控更新后重新构建；日常构建仍以应用锁定提交为准。维护者的源码重建和覆盖入口见[type-build](plugins/type-build.md#内置-swoole-与运行依赖)。
+历史 `type-build:1.0.0-rc.14` 包含这些资源；模块、许可及 Git 属性的字节一致性和独立 Composer 消费均已核对。旧锁文件指向不含 `resources/swoole/manifest.json` 的版本时，须受控更新后重新构建；日常构建仍以应用锁定提交为准。维护者的源码重建和覆盖入口见[type-build](plugins/type-build.md#内置-swoole-与运行依赖)。
 
 ## 部署者需要管理什么
 

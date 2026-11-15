@@ -8,9 +8,9 @@ ORM 使用 PDO 访问数据库协议，Swoole 提供协程上下文、等待、C
 
 ## 常用能力边界
 
-当前已具备从模型声明、数据读写到事务与资源收尾的主路径，常用接口仍有待补项。下表区分模型能力与底层表查询；已有 SQL 接口不代表它自动执行模型字段、租户、软删除、版本或事件规则。
+当前 RC19 候选已具备从模型声明、数据读写到事务与资源收尾的主路径；表格只列当前明确支持和有意保留的边界。下表区分模型能力与底层表查询；已有 SQL 接口不代表它自动执行模型字段、租户、软删除、版本或事件规则。
 
-本页的 `ModelQuery::sum/avg/min/max`、`insertMany`、受管时间字段和所选 PDO hook 前置检查属于当前 `main`，尚未包含在已发布的 RC14 中。开发应用使用含这些改动的组件源码并重新构建，版本安装仍按[发布说明](releases.md)核对。
+本页的 `ModelQuery::sum/avg/min/max`、`insertMany`、受管时间字段、`firstOrCreate`、`upsert/upsertAnyUnique` 和所选 PDO hook 前置检查均已纳入 RC19 候选代码。RC19 尚未公开 Release；开发应用仍须使用同一批组件并重新构建，版本安装按[发布说明](releases.md)核对。
 
 | 需求 | 当前能力 | 使用边界 |
 | --- | --- | --- |
@@ -20,12 +20,12 @@ ORM 使用 PDO 访问数据库协议，Swoole 提供协程上下文、等待、C
 | 模型聚合 | `count/sum/avg/min/max`，保留字段映射、租户、软删除和读路由 | 空集计数为 0，其他为 null；精确文本列拒绝数据库数值聚合，不强制转浮点 |
 | 集合修改与删除 | `update/delete/increment/decrement` 已有 | 单条写入，不设额外匹配行数上限；不触发逐模型事件 |
 | 批量新增 | `ModelQuery::insertMany` 校验整批字段并执行单条 INSERT | 返回影响数量，不触发逐模型事件、不返回猜测主键；约束失败回滚整批 |
-| 批量冲突写入 | 当前 main 提供 Model `upsert/upsertAnyUnique`，未包含 RC14 | MySQL 接受任意唯一键且拒绝软删除模型；另两库指定完整真实唯一目标，软删除冲突跳过；保留租户、时间和版本 |
+| 批量冲突写入 | Model 提供 `upsert/upsertAnyUnique`，按驱动真实唯一约束执行 | MySQL 接受任意唯一键且拒绝软删除模型；另两库指定完整真实唯一目标，软删除冲突跳过；保留租户、时间和版本 |
 | 并发查找或创建 | `Model::firstOrCreate` 使用完整、非空的真实唯一身份 | 仅恢复已确认的目标唯一竞争；其他约束、不可见冲突及提交未知继续失败，不重试业务 |
 | 关系 | 四类关系、嵌套预加载、补加载、关系条件和计数/求和；多对多 `attach/detach/sync` | 关系读取不隐式发 SQL；没有专用多态、穿透关系或关系创建助手 |
 | 软删除与生命周期 | 实例恢复/物理删除、受管创建和更新时间、获取器/修改器和显式观察器 | 没有集合恢复/强制删除或 `fresh/refresh` 专用接口；重新读主库取得新对象 |
 | 事务、路由与租户 | 同库事务、保存点、提交后回调、乐观锁、主从与可信上下文范围 | 子任务独立事务；未知提交需要对账，不能自动重试 |
-| 迁移与外部效果 | 脚本建立或更新数据库，也能从当前库生成带初始化数据的完整脚本 | 初始化数据只含安装标记、平台默认设置和菜单；口令与业务记录不进入生成脚本 |
+| 迁移与外部效果 | `database/migrations` 脚本由构建期编译为 `app/generated/Migrations` 静态注册表；`generate` 返回带 down 的 Migration、SchemaMigration 草稿、warnings 和完整性报告 | 初始化数据只含安装标记、平台默认设置和菜单；PostgreSQL/SQLite 索引、外键、检查约束会反向读取，无法表达的特性进入 warnings 并标记不完整 |
 
 批量冲突写入遵守各库的真实唯一约束和影响行数语义；会话复用的剩余范围见 [ORM 补齐顺序](roadmap.md#orm-补齐顺序)，便捷方法按实际调用需求增加。隐式懒加载、动态扫描和共享活动模型不属于当前执行方式。真实三库与编译范围见[独立消费矩阵](https://github.com/zoujingli/typeapp/blob/main/docs/development/orm-consumer-matrix.md)。
 
@@ -90,7 +90,7 @@ Swoole 在可让出的数据库等待期间调度其他协程；ORM 负责把连
 | 借用与隔离 | 同一作用域按需复用租约；子任务独立连接，事务绑定同一主库 | 自定义协议入口同样必须绑定并关闭作用域 |
 | 容量与取消 | 有界排队、截止及取消；超时后仍持有在途连接额度，直到真实退出 | 实际数据库调用未退出时不能强称已取消或回滚，不能透明重试写入 |
 | 会话归还 | 清理事务和游标；PostgreSQL 重置后可物理复用，MySQL/SQLite 关闭重建 | 后两者的完整会话重置与跨租约物理复用尚未实现 |
-| 验收 | 已有真实锁等待、隔离、断连退役和独立消费者；四平台默认矩阵与公共组件三库集成通过 | 纯 CRUD 复用仍需独立身份断言；当前已验收源码及实际范围见[平台与验收](platforms.md)，不等于完整 ORM 能力已交付 |
+| 验收 | 已有真实锁等待、隔离、断连退役和独立消费者；macOS ARM64 的 RC19 本地三库链路通过，Linux/Windows 的三平台候选矩阵仍待复核 | 纯 CRUD 复用仍需独立身份断言；当前已验收源码及实际范围见[平台与验收](platforms.md)，不等于完整 ORM 能力已交付 |
 
 开发和构建环境需匹配 PDO 驱动与 Swoole 构建能力；生产单程序已静态链接所需非系统运行库，用户无需另行安装或启动 Swoole。数据库服务、配置和数据的维护要求见[环境与依赖](environment.md)和[构建与部署](deployment.md)。
 
@@ -108,7 +108,7 @@ Swoole 在可让出的数据库等待期间调度其他协程；ORM 负责把连
 
 ## 脚本与数据库
 
-正向执行 `SchemaMigration` 的 `up()`。迁移文件是 `database/migrations/003_products.php`，`return new class`，文件名就是版本。脚本里用 `Schema::create`、`Schema::table`、`hasTable`、`hasColumn` 和 `insert` 描述结构与初始行，而不是手写各数据库的 SQL。`integer()` 是 32 位整数，`bigInteger()` 在三种数据库上都是 `BIGINT`。表注释和列注释只写入 MySQL 的 `COMMENT`。`insert` 的表名和列名使用与建表相同的小写标识符规则并加引号，值只接受 null、布尔、有限数字和文本。`pretend` 只展开这些声明会生成的语句，不写数据库。迁移目录由构建期编译成静态注册表，运行时不读取目录脚本。反向 `generate` 仍然从当前库读取结构，同时返回可直接回滚的 `Migration`、可保存的匿名 `SchemaMigration` 草稿和完整性报告；提交前要审查 warnings 并确认 Blueprint 能表达全部结构。
+正向执行 `SchemaMigration` 的 `up()`。迁移文件是 `database/migrations/003_products.php`，`return new class`，文件名就是版本。脚本里用 `Schema::create`、`Schema::table`、`hasTable`、`hasColumn` 和 `insert` 描述结构与初始行，而不是手写各数据库的 SQL。`integer()` 是 32 位整数，`bigInteger()` 在三种数据库上都是 `BIGINT`。表注释和列注释只写入 MySQL 的 `COMMENT`。`insert` 的表名和列名使用与建表相同的小写标识符规则并加引号，值只接受 null、布尔、有限数字和文本。`pretend` 只展开这些声明会生成的语句，不写数据库。迁移目录由 TypePHP 构建期 `MigrationCompiler` 编译成 `app/generated/Migrations` 静态注册表，生产和开发优先调用该注册表，运行时不使用 `glob/include` 读取迁移 PHP 文件。反向 `generate` 仍然从当前库读取结构：MySQL 保留字段、注释、索引和外键，PostgreSQL 读取 `pg_indexes`/`pg_constraint`，SQLite 读取 `PRAGMA index_list/index_info/foreign_key_list` 并保留检查约束提示；返回可直接回滚的 `Migration`、可保存的匿名 `SchemaMigration` 草稿、warnings 和完整性报告。提交前必须审查 warnings，并在 `complete=false` 时补充受控 SQL 或拒绝生成。
 
 ```php
 <?php

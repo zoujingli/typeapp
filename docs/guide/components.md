@@ -39,9 +39,9 @@ flowchart LR
 
 组件源码统一在 [TypeApp 主仓](https://github.com/zoujingli/typeapp)的 `plugin/type-*` 维护，再分发到各自的 `zoujingli/type-xxxx` 仓库。第一方内容采用 Apache-2.0，各仓库携带 LICENSE 与 NOTICE；[type-project](https://github.com/zoujingli/type-project) 提供独立应用模板。
 
-15 个组件与应用模板均通过 [Packagist](https://packagist.org/packages/zoujingli/) 提供公共索引。Composer 默认使用该索引，应用只声明自己需要的组件，传递依赖自动解析；无需 SSH 密钥或逐个配置 Git 仓库。当前公开候选批次为 `1.0.0-rc.14`，16 个包的版本与来源提交均已核对；同时保留 `dev-main` 开发分支，尚无稳定版本。
+15 个组件与应用模板均通过 [Packagist](https://packagist.org/packages/zoujingli/) 提供公共索引。Composer 默认使用该索引，应用只声明自己需要的组件，传递依赖自动解析；无需 SSH 密钥或逐个配置 Git 仓库。当前候选批次为 `1.0.0-rc.19`，主仓 tag 已固定到 RC19；16 个包的公开版本、来源提交和 Packagist 回读仍待 Release 流程完成。`dev-main` 继续作为开发分支，尚无稳定版本。
 
-`1.0.0-rc.14` 的组件和模板批次已完成公开安装、全量 AOT 与三库原生消费核验。维护者通过主仓固定提交分发，子仓 push webhook 通知 Packagist 更新；消费者从默认索引安装并核对本批拆分提交。准确验收基线见[平台与验收](platforms.md)，开发分支更新不自动替换已有应用的依赖。
+RC19 的组件和模板批次需要在公开 Release 前完成安装、全量 AOT 与三库原生消费核验。维护者通过主仓固定提交分发，子仓 push webhook 通知 Packagist 更新；消费者从默认索引安装并核对本批拆分提交。历史 RC14 的公开消费证据保留，开发分支更新不自动替换已有应用的依赖。
 
 ```mermaid
 flowchart TB
@@ -69,9 +69,9 @@ composer require zoujingli/type-orm-sqlite:1.0.0-rc.19
 | `type-core`、`type-orm`、`type-validate`、`type-log`、`type-redis`、`type-build`、`type-testing` | `type-runtime` |
 | 三种 `type-orm-*` 驱动 | `type-orm`、`type-runtime` |
 | `type-cache`、`type-queue`、`type-scheduler` | `type-redis`、`type-runtime` |
-| `type-mqtt` | 当前 `main` 依赖 `type-core`、`type-orm`、`type-runtime`；RC14 的直接依赖为后两者。PostgreSQL 持久后端另需 `type-orm-pgsql` |
+| `type-mqtt` | RC19 候选依赖 `type-core`、`type-orm`、`type-runtime`；PostgreSQL 持久后端另需 `type-orm-pgsql` |
 
-具体公开依赖、扩展和版本要求以所用包的 `composer.json` 为准。
+具体公开依赖、扩展和版本要求以所用包的 `composer.json` 与 RC19 发布回执为准。
 
 构建与测试工具通常安装为开发依赖：
 
@@ -157,7 +157,7 @@ main();
 
 ## 版本与接口依据
 
-先选版本，再按对应接口开发。默认站点展示发布通道，`/next/` 展示当前开发文档；主仓 Markdown 和 `main` 分支 README 随源码演进，不能当作 RC14 接口说明。已安装版本以 `vendor/zoujingli/type-*/README.md` 和 `composer.lock` 为准。
+先选版本，再按对应接口开发。默认站点展示发布通道，`/next/` 展示当前开发文档；主仓 Markdown 和 `main` 分支 README 随源码演进，不能当作已发布 RC19 的接口说明。已安装版本以 `vendor/zoujingli/type-*/README.md` 和 `composer.lock` 为准。
 
 | 使用目的 | 依赖选择 | 对应说明 |
 | --- | --- | --- |

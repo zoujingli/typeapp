@@ -2,7 +2,7 @@
 
 提供独立于 HTTP 核心的驱动协议、受管连接、参数化查询、模型/关系、事务、迁移与 Outbox。数据库差异由所选驱动及明确的查询方言处理，不提供隐藏的写入重试或跨系统事务保证。
 
-RC14 的四平台默认原生 CI 已在同一源码基线上通过，覆盖 MySQL、PostgreSQL、SQLite 的组件与应用场景；公共组件批次另通过准确分发提交的安装、全量 AOT 和三库无源码集成。独立 ORM 消费者验证上下文、真实锁等待、取消、连接所有权、会话退役和并发写入。具体身份与范围见[平台与验收](https://iots.top/#/guide/platforms)。当前 `main` 新增的模型聚合、批量新增与 PDO hook 前置检查尚未包含 RC14；MySQL/SQLite 物理复用等边界继续保留。
+历史 RC14 的四平台默认原生 CI 曾通过 MySQL、PostgreSQL、SQLite 的组件与应用场景；RC19 候选的独立 ORM 消费者继续验证上下文、真实锁等待、取消、连接所有权、会话退役和并发写入。当前 RC19 已包含模型聚合、批量新增与 PDO hook 前置检查；MySQL/SQLite 物理复用等边界继续保留。具体身份与范围见[平台与验收](https://iots.top/#/guide/platforms)。
 
 业务实体 CRUD 使用无连接参数的 Model。启动时由 `Db::configure()` 装配数据库管理器，模型在当前 Swoole 执行作用域中按需借用连接；默认读从写主，`master()` 指定主读，事务内固定同一主库，事务外写后不自动粘主。具有租户字段的模型从应用已验证并绑定的上下文自动隔离，缺失身份拒绝执行。PostgreSQL 已实现完整会话重置后的 PDO 复用；MySQL、SQLite 的物理复用及完整原生平台验收仍有缺口，当前能力和限制见开发主仓的[模型连接与主从路由](https://github.com/zoujingli/typeapp/blob/main/docs/development/model-connections.md)。
 
@@ -34,11 +34,11 @@ Database 通过 type-runtime 的有界池按作用域借还会话。Connection �
 
 `Connection::table()` 提供不可变 Query，支持条件、Join、聚合、JSON 标量、批量写入和明确的三库能力差异。`Model`、`ModelQuery` 与生成映射提供受控访问、变更追踪、部分字段保存和安全输出；详细用法见开发主仓 `docs/development/models.md`。本包第一方源码按 Apache-2.0 提供；具体仓库可见性和分发批次由维护者管理。
 
-模型 CRUD、事务结果与作用域收尾的完整路径见[数据库与模型](https://iots.top/#/guide/database)。`ModelQuery::update/delete` 以单条写入 SQL 保留字段、租户、软删除及版本约束，没有额外行数上限；集合操作不触发逐模型观察器，已有对象需重新读取。没有业务条件时须显式 `allowAll()`。`insertMany` 逐行校验字段并补入可信租户及初始版本、软删除状态，执行一条 INSERT，返回影响数量；不猜测主键、不触发逐模型事件，失败回滚整批。当前 `main` 新增 `Model::firstOrCreate`、PostgreSQL/SQLite 的 `Model::upsert` 与 MySQL 的 `Model::upsertAnyUnique`，使用真实唯一索引证明身份安全，尚未包含 RC14。具体约束及验收边界见[唯一身份与冲突写入](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#唯一身份与冲突写入)。
+模型 CRUD、事务结果与作用域收尾的完整路径见[数据库与模型](https://iots.top/#/guide/database)。`ModelQuery::update/delete` 以单条写入 SQL 保留字段、租户、软删除及版本约束，没有额外行数上限；集合操作不触发逐模型观察器，已有对象需重新读取。没有业务条件时须显式 `allowAll()`。`insertMany` 逐行校验字段并补入可信租户及初始版本、软删除状态，执行一条 INSERT，返回影响数量；不猜测主键、不触发逐模型事件，失败回滚整批。当前 RC19 候选包含 `Model::firstOrCreate`、PostgreSQL/SQLite 的 `Model::upsert` 与 MySQL 的 `Model::upsertAnyUnique`，使用真实唯一索引证明身份安全；RC14 应用应继续读取其 tag 文档，不能混用接口。具体约束及验收边界见[唯一身份与冲突写入](https://github.com/zoujingli/typeapp/blob/main/docs/development/models.md#唯一身份与冲突写入)。
 
 `ModelQuery::sum/avg/min/max` 在模型可见范围内统计，保留读路由、字段映射及数据库数值精度；空集或全 null 返回 null，数值文本列的精确算术明确拒绝。并发查找或创建使用 `firstOrCreate`，仅恢复已确认的目标唯一竞争；重新加载可在当前作用域显式读主库取得新对象。完整[能力边界](https://iots.top/#/guide/database?id=常用能力边界)区分已有模型能力、底层 SQL 与待补接口。协程中创建 PDO 前检查所选驱动：缺官方构建能力报 `swoole_pdo_hook_unavailable`，未启用 hook 报 `swoole_hook_startup_required`。`app:install` 在协程内迁移，同样受这条检查约束；协程外直接调用 `Migrator` 的同步工具保持原有行为。`_query()->like()` 将输入中的 `%`、`_` 和 `!` 作为字面量，并使用 `ESCAPE '!'`。
 
-`Table(createdAt: 'created_at', updatedAt: 'updated_at')` 显式声明受管时间：非空 `int` 属性存 Unix 秒，`DateTimeImmutable` 属性存 UTC 微秒。创建时两者共用一次取时，实际更新只维护更新时间；`insertMany`、集合更新、算术和软删除沿用同一规则。字段不接受业务赋值，也不能兼任主键、租户、版本或软删除。无变化 `save()` 不更新时间或版本，`touch()` 仍只推进版本；业务事件时间由业务决定。此能力属于当前 `main`，未包含已发布的 RC14，升级组件及构建器后重新生成应用，详见[受管时间教程](https://iots.top/#/guide/database?id=受管创建和更新时间)。
+`Table(createdAt: 'created_at', updatedAt: 'updated_at')` 显式声明受管时间：非空 `int` 属性存 Unix 秒，`DateTimeImmutable` 属性存 UTC 微秒。创建时两者共用一次取时，实际更新只维护更新时间；`insertMany`、集合更新、算术和软删除沿用同一规则。字段不接受业务赋值，也不能兼任主键、租户、版本或软删除。无变化 `save()` 不更新时间或版本，`touch()` 仍只推进版本；业务事件时间由业务决定。此能力属于 RC19 候选，历史 RC14 不包含；升级组件及构建器后重新生成应用，详见[受管时间教程](https://iots.top/#/guide/database?id=受管创建和更新时间)。
 
 ## 迁移
 
@@ -48,7 +48,7 @@ Database 通过 type-runtime 的有界池按作用域借还会话。Connection �
 
 SQLite 人工审查的表重建计划可在事务迁移中使用精确的 `PRAGMA defer_foreign_keys = ON/OFF`。进入延迟检查及恢复即时检查前均验证外键开启和实际引用，损坏时回滚；不允许关闭外键，也不放宽普通业务事务。表数据、索引、触发器及级联影响仍由迁移作者明确处理，详见[原生迁移边界](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-migrations.md#sql-与恢复边界)。
 
-当前 `main` 的应用升级可通过 `run($migrations, false, $before, $after)` 接入业务前后置校验。两个回调均为 `Closure(Connection, array): void`，在同一迁移锁内使用当前专属连接与迁移状态；`before` 在写入迁移控制表之前执行，`after` 在全部迁移完成后执行。回调不能另借迁移连接；后置校验失败不撤销已经提交的 DDL，须保留失败回执并显式核对。构造 `Migrator` 时可通过 `budget` 注入同一连接域的 `DeploymentBudget`，将迁移连接计入部署分额。这些新增参数尚未包含 RC14。
+RC19 候选的应用升级可通过 `run($migrations, false, $before, $after)` 接入业务前后置校验。两个回调均为 `Closure(Connection, array): void`，在同一迁移锁内使用当前专属连接与迁移状态；`before` 在写入迁移控制表之前执行，`after` 在全部迁移完成后执行。回调不能另借迁移连接；后置校验失败不撤销已经提交的 DDL，须保留失败回执并显式核对。构造 `Migrator` 时可通过 `budget` 注入同一连接域的 `DeploymentBudget`，将迁移连接计入部署分额。这些参数不属于历史 RC14。
 
 ## 声明式使用示例
 
@@ -182,4 +182,4 @@ composer test:orm-suite-native
 
 ## Schema 冻结迁移
 
-当前 `main` 新增 `#[Type\Orm\Attribute\Schema]` 与 `php vendor/bin/type schema:prepare <声明.php>`，尚未包含 RC14。显式准备三库 SQL、协议和摘要后，将生成类的 `migration($driver)` 加入既有迁移列表；开发及 AOT 只核验并嵌入冻结结果，不同步在线结构。支持建表、增列、表与列改名、索引调整和原生删列；SQLite 不自动重建表，MySQL 非事务 DDL 保留部分生效与显式恢复。完整声明、字段语义、审查和状态/恢复调用见[Schema 教程](https://github.com/zoujingli/typeapp/blob/main/docs/development/schema.md)。
+RC19 候选包含 `#[Type\Orm\Attribute\Schema]` 与 `php vendor/bin/type schema:prepare <声明.php>`；历史 RC14 不包含。显式准备三库 SQL、协议和摘要后，将生成类的 `migration($driver)` 加入既有迁移列表；开发及 AOT 只核验并嵌入冻结结果，不同步在线结构。支持建表、增列、表与列改名、索引调整和原生删列；SQLite 不自动重建表，MySQL 非事务 DDL 保留部分生效与显式恢复。完整声明、字段语义、审查和状态/恢复调用见[Schema 教程](https://github.com/zoujingli/typeapp/blob/main/docs/development/schema.md)。

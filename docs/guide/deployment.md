@@ -19,16 +19,16 @@
 
 ## 当前构建状态
 
-RC14 已按四个平台 × `sqlite`、`mysql`、`pgsql` 三个 profile 发布，共 12 个单文件程序，并完成新版工具链的同产物验收和公开下载核验。每个程序只包含对应数据库驱动和已启用功能；`DB_DRIVER` 不匹配时在启动或迁移前返回 `runtime_profile_database_mismatch`。每次部署选择一个匹配程序，不能在同一程序中切换数据库。
+RC19 候选固定到 `b485f0b`，目标为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个 profile；Windows x64 当前只保留诊断。RC19 尚未创建 GitHub Release 或下载附件。每个程序只包含对应数据库驱动和已启用功能；`DB_DRIVER` 不匹配时在启动或迁移前返回 `runtime_profile_database_mismatch`。每次部署选择一个匹配程序，不能在同一程序中切换数据库。
 
 | 已实现路径 | 验收与边界 |
 | --- | --- |
-| 静态 SDK、目标头文件和归档摘要校验 | RC14 的 12 个 profile 已完成新版 SDK 探针与应用验收；历史共享模块不能作为静态输入 |
+| 静态 SDK、目标头文件和归档摘要校验 | RC19 的 9 个候选 profile 需要用同一最终程序完成 SDK 探针与应用验收；历史共享模块不能作为静态输入 |
 | 全量 AOT、内置 PHP 配置、静态运行身份 | 普通入口和线程应用分别验收；不读部署机 PHP 配置 |
 | 页面和许可原文内嵌 | 页面显式安装；`licenses` 直接读取许可材料，不释放运行库 |
 | 单文件输出、搬迁、只读目录、无源码隔离 | 每个平台/profile 都必须用最终待发布程序完成对应数据库行为检查；公开下载摘要须与候选一致 |
 
-旧 `v1.0.0-rc.7` 是历史目录归档，须完整解压运行；其附件和验收身份保持不变。当前发布门禁只接受 12 个单程序和对应 profile 回执，任一组合未完成就阻止主仓 Release 公开。静态 SDK、源码和重建配方只保存在 Actions Artifact，不混入公开下载列表，见[版本下载](releases.md#下载程序)。
+旧 `v1.0.0-rc.7` 是历史目录归档，须完整解压运行；其附件和验收身份保持不变。当前发布门禁只接受 9 个 RC19 候选程序和对应 profile 回执，任一组合未完成就阻止主仓 Release 公开。静态 SDK、源码和重建配方只保存在 Actions Artifact，不混入公开下载列表，见[版本下载](releases.md#下载程序)。
 
 ## 构建与交付流程
 
@@ -51,7 +51,7 @@ flowchart TB
 
 工具链版本以当前项目的 `toolchain.lock.json` 为准，生产依赖以 `composer.lock` 为准。准备与目标 OS、架构一致的 SDK 和扩展，再检查构建环境。
 
-单程序构建通过 `TYPE_STATIC_RUNTIME` 选择目标 SDK 清单，并校验 PHP ABI、目标头文件、归档、源码适配与许可材料。构建组件内的四平台 [Swoole 共享模块](plugins/type-build.md#内置-swoole-与运行依赖)仅继续用于共享库开发及历史回归，不能放进程序冒充静态链接。构建宿主 PHP 与目标静态 PHP 分开校验。
+单程序构建通过 `TYPE_STATIC_RUNTIME` 选择目标 SDK 清单，并校验 PHP ABI、目标头文件、归档、源码适配与许可材料。构建组件内按平台提供的 [Swoole 共享模块](plugins/type-build.md#内置-swoole-与运行依赖)仅继续用于共享库开发及历史回归，不能放进程序冒充静态链接。构建宿主 PHP 与目标静态 PHP 分开校验。
 
 构建维护者可使用以下静态 SDK 制备入口；工作目录须为尚不存在的绝对路径，宿主 `PHP_HOME` 使用锁定的 PHP 8.5.12 ZTS。SDK 仅供构建，不随程序部署。
 
@@ -72,7 +72,7 @@ php vendor/bin/type doctor type-app.json build
 
 本仓库使用 `docs/build-config/type-app.json` 作为构建配置。doctor 检查所选范围的前置条件，不连接业务服务；检测通过不等于应用已编译或运行验收通过。
 
-RC14 的四平台 × 三 profile 已各自用最终程序完成对应数据库的隔离部署。Linux 使用 bubblewrap，macOS 使用系统沙箱，Windows 使用受限令牌和访问控制，禁止读取构建源码、SDK 和执行开发工具。主应用、独立组件和模板各有验收入口，详见[平台支持表](platforms.md#当前平台状态)。自己的应用仍须在目标环境验证数据库、角色和停止语义；Docker 或 WSL 的 Linux 结果不替代 Windows/macOS 原生结果。
+RC19 候选按三平台 × 三 profile 进行对应数据库隔离部署；历史 RC14 的四平台结果只保留在历史段。Linux 使用 bubblewrap，macOS 使用系统沙箱，Windows 使用受限令牌和访问控制，禁止读取构建源码、SDK 和执行开发工具。主应用、独立组件和模板各有验收入口，详见[平台支持表](platforms.md#当前平台状态)。自己的应用仍须在目标环境验证数据库、角色和停止语义；Docker 或 WSL 的 Linux 结果不替代 Windows/macOS 原生结果。
 
 构建维护者为目标平台准备匹配的 SDK 与扩展，并以同一产物完成应用、通信、数据库和无源码部署验收。部署者使用对应平台经过验证的包，具体范围见[平台与验收](platforms.md)。
 
@@ -95,7 +95,7 @@ composer build
 
 构建将框架、业务、生成配置/路由/模型、经过声明转换的原 Service 及实际生产依赖一起交给 TypePHP。新增路由、声明或生产代码都需要重新构建。100% 指完整生产实现的编译覆盖，不等于全部平台已验证。
 
-物联中心的 `composer typeapp:build` 先冻结安装前端依赖，执行类型检查与构建，再校验入口、许可及资源摘要，最后全量 AOT。`web/dist` 以 `web/` 前缀编入程序；Node.js 与 pnpm 只用于构建。版本发布中前端只构建一次，四个平台消费同一份已校验资源，流程见[版本发布与安装](releases.md)。独立模板与组件不携带这份业务前端。
+物联中心的 `composer typeapp:build` 先冻结安装前端依赖，执行类型检查与构建，再校验入口、许可及资源摘要，最后全量 AOT。`web/dist` 以 `web/` 前缀编入程序；Node.js 与 pnpm 只用于构建。版本发布中前端只构建一次，三个目标平台消费同一份已校验资源，流程见[版本发布与安装](releases.md)。独立模板与组件不携带这份业务前端。
 
 ## 输出一个程序文件
 
@@ -118,7 +118,7 @@ build/typeapp-iot licenses
 
 ## 首次启动
 
-本文的 `dev/prod/demo` 环境值针对当前开发版构建；公开 RC14 仍使用旧环境值。升级前先核对[环境迁移规则](environment.md#运行环境)，不要只替换配置而继续运行旧程序。
+本文的 `dev/prod/demo` 环境值针对 RC19 候选和当前开发版；历史 RC14 使用旧环境值。升级前先核对[环境迁移规则](environment.md#运行环境)，不要只替换配置而继续运行旧程序。
 
 将已验收的单程序放到匹配 OS/架构和最低系统版本的服务器，下文将程序命名为 `app`。默认应用根是程序所在目录；需要分离数据时，在进程环境中指定已存在的绝对目录 `APP_BASE_PATH`。程序从应用根读取 `.env`，不依赖调用者的工作目录。
 
@@ -245,7 +245,7 @@ sequenceDiagram
 
 本仓库的物联中心共用完整应用构建，但 HTTP、MQTT Broker 和审计维护调度分别管理，单个 `serve` 命令不启动全部角色。当前案例不运行遥测处理、统计、告警、通知或导出链。具体角色、环境键和管理端构建见[物联网中心](iot-center.md)。`type-project` 模板不默认包含这些业务与 Web 资源。
 
-物联中心的控制器、普通命令与维护计划使用同一应用声明。HTTP 和 MQTT 监听宿主由启动入口持有原生服务循环；每请求、消息和计划执行仍有独立作用域。接线、资源归属及停止流程见[物联中心统一装配](../development/iot-application-assembly.md)。
+物联中心的控制器、普通命令与维护计划使用同一应用声明。HTTP 和 MQTT 监听宿主由启动入口持有原生服务循环；每请求、消息和计划执行仍有独立作用域。接线、资源归属及停止流程见[物联中心统一装配](https://github.com/zoujingli/typeapp/blob/main/docs/development/iot-application-assembly.md)。
 
 设备 MQTT 原始通信要求 PostgreSQL 严格同步主备和真实 TLS。先完成业务迁移及 `center:mqtt-install`，再启动 Broker；`IOT_MQTT_COMMAND` 明确指向同一已验证应用产物。设备与接入应用各自认证，逐设备通信权限由当前 Tenant 的 Center 或获授权的 Platform 管理。Swoole 原生能力由同一构建提供。管理 API 三库通过不构成 MQTT 三种存储后端或高可用通过证明。
 
@@ -279,7 +279,7 @@ sequenceDiagram
   A-->>O: ready，保留未匹配主体隔离状态
 ```
 
-恢复门限制新角色启动，不能替代停止旧进程或隔离旧主库。设备状态、凭据及当前使用关系仍按实际事实核对；恢复不自动启用已停用设备或复活已撤销秘密。恢复状态机的三库 PHP 验证与真实物理备份、同步复制、MQTT/TLS、全量 AOT 及正式平台验收分别记录，实际边界见[验收入口](../development/test-entrypoints.md)。
+恢复门限制新角色启动，不能替代停止旧进程或隔离旧主库。设备状态、凭据及当前使用关系仍按实际事实核对；恢复不自动启用已停用设备或复活已撤销秘密。恢复状态机的三库 PHP 验证与真实物理备份、同步复制、MQTT/TLS、全量 AOT 及正式平台验收分别记录，实际边界见[验收入口](https://github.com/zoujingli/typeapp/blob/main/docs/development/test-entrypoints.md)。
 
 备份应覆盖管理数据库、协议持久存储、配置及应用持久数据，并在隔离目标验证可恢复。保留原备份、程序和核对凭据，不通过手改完成状态跳过未知外部结果。页面使用 `web:install --dry-run --force` 核对后显式更新，不与数据库形成跨资源原子事务。
 
