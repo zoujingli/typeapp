@@ -47,6 +47,8 @@ jobs:
     if: github.repository == 'zoujingli/typeapp'
     runs-on: ${{ inputs.suite == 'benchmark-x64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     timeout-minutes: 120
+    # ARM64 是诊断性原生矩阵；失败证据照常上传，不阻断静态发布候选。
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
