@@ -69,4 +69,8 @@ task_clean="$(mktemp)"
 awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*(swoole|pdo_pgsql|pdo_sqlite)/' "$task_ini" > "$task_clean"
 printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" >> "$task_clean"
 mv "$task_clean" "$task_ini"
+# 后续步骤和 AOT 消费者统一使用去重后的运行配置；扫描目录置空，避免再次
+# 叠加含 Swoole 的临时 CLI 声明。Composer 已在过滤前完成完整平台核验。
+printf 'PHPRC=%s\nPHP_INI_SCAN_DIR=\n' "$task_ini" >> "$GITHUB_ENV"
+export PHPRC="$task_ini" PHP_INI_SCAN_DIR=
 php -m | grep -qx swoole
