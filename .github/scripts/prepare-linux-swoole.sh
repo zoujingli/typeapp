@@ -31,6 +31,14 @@ else
         exit 1
     }
 fi
+if ! PHPRC="$task_ini" PHP_INI_SCAN_DIR='' "$PHP_HOME/bin/php" -r 'exit(extension_loaded("sockets") ? 0 : 1);'; then
+    echo 'embed 运行配置未能加载 sockets 扩展。' >&2
+    grep -Ein '^[[:space:]]*extension[[:space:]]*=.*sockets' "$task_ini" >&2 || true
+    if command -v nm >/dev/null 2>&1; then
+        nm -D "$task_socket_module" 2>/dev/null | grep -E 'socket_ce|socket_create_object' >&2 || true
+    fi
+    exit 1
+fi
 task_clean="$(mktemp)"
 awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*swoole/ && tolower($0) !~ /^[[:space:]]*swoole.enable_fiber_mock/' "$task_ini" > "$task_clean"
 printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" >> "$task_clean"
