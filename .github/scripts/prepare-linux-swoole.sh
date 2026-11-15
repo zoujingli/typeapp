@@ -17,6 +17,20 @@ cp "$task_built" "$task_runtime_dir/swoole.so"
 task_swoole_module="$task_runtime_dir/swoole.so"
 printf 'TYPE_SWOOLE_MODULE=%s\n' "$task_swoole_module" >> "$GITHUB_ENV"
 task_ini="$TYPE_NATIVE_PHP_INI"
+# Swoole 的 socket_ce 来自 PHP sockets 扩展；重新整理声明并固定在 Swoole
+# 之前，避免 embed 关闭扫描目录后只剩下 CLI 的隐式模块状态。
+task_socket_module="$("$PHP_HOME/bin/php-config" --extension-dir)/sockets.so"
+if [[ -f "$task_socket_module" ]]; then
+    task_clean="$(mktemp)"
+    awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*sockets([.]so)?/' "$task_ini" > "$task_clean"
+    printf 'extension=%s\n' "$task_socket_module" >> "$task_clean"
+    mv "$task_clean" "$task_ini"
+else
+    "$PHP_HOME/bin/php" -n -r 'exit(extension_loaded("sockets") ? 0 : 1);' || {
+        echo "PHP SDK 缺少 sockets 扩展：$task_socket_module" >&2
+        exit 1
+    }
+fi
 task_clean="$(mktemp)"
 awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*swoole/ && tolower($0) !~ /^[[:space:]]*swoole.enable_fiber_mock/' "$task_ini" > "$task_clean"
 printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" >> "$task_clean"

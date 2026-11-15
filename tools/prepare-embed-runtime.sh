@@ -50,7 +50,7 @@ php "$task_root/tools/configure-embed-runtime.php" "$task_work" shared >/dev/nul
 # 通过扫描目录加载该扩展，而 embed 运行时会关闭扫描目录，因此把同一 SDK
 # 的 sockets 模块登记到生成的独立配置，确保后续装配 Swoole 时依赖顺序稳定。
 task_socket_module="$("$task_sdk/bin/php-config" --extension-dir)/sockets.so"
-if [[ -f "$task_socket_module" ]] && ! grep -Eiq '^[[:space:]]*extension[[:space:]]*=.*sockets(?:\.so)?' "$task_work/php.ini"; then
+if [[ -f "$task_socket_module" ]] && ! grep -Eiq '^[[:space:]]*extension[[:space:]]*=.*sockets([.]so)?' "$task_work/php.ini"; then
   printf 'extension=%s\n' "$task_socket_module" >> "$task_work/php.ini"
 fi
 
