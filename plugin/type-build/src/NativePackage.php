@@ -361,7 +361,7 @@ SH;
     private function upgradeScript(bool $windows): string
     {
         if ($windows) {
-            return "@echo off\r\nsetlocal\r\nif not \"%~1\"==\"\" (echo 用法：scripts\\upgrade.cmd 1>&2 & exit /b 2)\r\ncall \"%~dp0..\\run.cmd\" verify-runtime\r\nif errorlevel 1 exit /b %errorlevel%\r\ncall \"%~dp0..\\run.cmd\" migrate status\r\nif errorlevel 1 exit /b %errorlevel%\r\ncall \"%~dp0..\\run.cmd\" migrate up\r\nexit /b %errorlevel%\r\n";
+            return "@echo off\r\nsetlocal\r\nif not \"%~1\"==\"\" (echo 用法：scripts\\upgrade.cmd 1>&2 & exit /b 2)\r\ncall \"%~dp0..\\run.cmd\" verify-runtime\r\nif errorlevel 1 exit /b %errorlevel%\r\ncall \"%~dp0..\\run.cmd\" app:upgrade\r\nexit /b %errorlevel%\r\n";
         }
         return <<<'SH'
 #!/bin/sh
@@ -372,8 +372,7 @@ if [ "$#" -ne 0 ]; then
 fi
 root=$(CDPATH='' cd -- "${0%/*}/.." && pwd -P)
 "$root/run" verify-runtime
-"$root/run" migrate status
-"$root/run" migrate up
+"$root/run" app:upgrade
 SH
             . "\n";
     }

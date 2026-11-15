@@ -55,7 +55,7 @@ expect(isset($release['files']['scripts/upgrade' . $scriptSuffix], $release['fil
 $upgradeContents = (string)file_get_contents($upgradeScript);
 $rollbackContents = (string)file_get_contents($rollbackScript);
 expect(
-    str_contains($upgradeContents, 'verify-runtime') && str_contains($upgradeContents, 'migrate status') && str_contains($upgradeContents, 'migrate up')
+    str_contains($upgradeContents, 'verify-runtime') && str_contains($upgradeContents, 'app:upgrade')
     && str_contains($rollbackContents, 'verify-runtime') && str_contains($rollbackContents, 'migrate status') && str_contains($rollbackContents, 'migrate rollback'),
     '升级与回退脚本没有调用受信主程序迁移入口'
 );
@@ -144,6 +144,8 @@ foreach ([['help'], ['--help'], ['migrate', 'help']] as $startupArguments) {
 $audit = (new Process([...$command, 'verify-runtime'], $package, $environment))->wait(90);
 expect($audit->successful() && $audit->stdout === "运行环境完整性校验通过。\n", '独立运行库完整审计失败：' . $audit->stderr);
 $initializationStatus = verifyNativeApplicationDeployment($project, $package, $runtime, $command, $environment, $driver, $release['embedded-resources'] ?? [], $isolated);
+$upgrade = (new Process([...$command, 'app:upgrade', '--dry-run', '--force'], $package, $environment))->wait(90);
+expect($upgrade->successful(), '原生二进制内置升级预览失败：' . $upgrade->stderr);
 
 $example = $package . '/config/env.example';
 $original = (string)file_get_contents($example);
