@@ -255,7 +255,7 @@ Broker 接入、持久工作和设备授权均使用 Swoole 官方 Process、Thr
 
 当前 Platform/System/Center 采用全新安装，不提供旧身份、旧人员入口或旧数据转换分支。`app:install` 只接受空库；旧安装拒绝接入且不自动清库。历史版本的升级流程和回执只证明原版本，不适用于当前架构。现场数据切换、外部 DNS/TLS 准备与发布由部署计划单独处理。
 
-初始化失败后先查看 `migrate status/history`。MySQL 的部分 DDL 不会自动回滚，只有核对实际状态后才使用 `migrate recover <版本> <retry|applied> <核对说明>`；首次空库仍必须使用 `app:install`，后续版本由 `migrate run/up` 应用，回滚只执行显式 down。`migrate generate` 仅供开发入口生成只读草稿，不能作为发布时的隐式结构变更。
+初始化失败后先查看 `migrate status/history`。MySQL 的部分 DDL 不会自动回滚，只有核对实际状态后才使用 `migrate recover <版本> <retry|applied> <核对说明>`；首次空库仍必须使用 `app:install`，后续版本可执行发布包内的 `scripts/upgrade`（Windows 为 `scripts\upgrade.cmd`），回退可执行 `scripts/rollback [步数]`（Windows 为 `scripts\rollback.cmd [步数]`）。这些脚本先校验运行时和迁移状态，再调用主程序的 `migrate up/rollback`，回滚只执行显式 down。`migrate generate` 仅供开发入口生成只读草稿，不能作为发布时的隐式结构变更。
 
 当前安装的灾难恢复继续使用受控备份与 `center:recovery`：先停止并隔离原系统的全部写入角色，在隔离的新目标恢复备份，再使用备份之外的当前授权清单核对。状态机的快照、隔离、核对及恢复每批有界且可续跑，未匹配主体保持隔离；旧人员会话及未消费交接码清除，不把数据库回滚当作重新授权。Platform 管理 HTTP 和 MQTT 协议节点共用该恢复门，管理页面只显示进度。
 

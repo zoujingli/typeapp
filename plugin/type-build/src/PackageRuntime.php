@@ -41,14 +41,20 @@ final class PackageRuntime
             || ($release['files'][$binary]['sha256'] ?? null) !== ($release['artifact']['sha256'] ?? null)) {
             throw new \RuntimeException('发布清单不属于当前编译产物');
         }
+        foreach (['declaration-generation', 'compiled-files', 'compiled-files-sha256'] as $identityKey) {
+            if (($release[$identityKey] ?? null) !== ($manifest[$identityKey] ?? null)) {
+                throw new \RuntimeException('发布的编译生成文件身份与当前编译产物不一致');
+            }
+        }
         $launcher = PHP_OS_FAMILY === 'Windows' ? 'run.cmd' : 'run';
+        $scriptSuffix = PHP_OS_FAMILY === 'Windows' ? '.cmd' : '';
         if (($release['dependency-notices'] ?? null) !== ($manifest['dependency-notices'] ?? null)) {
             throw new \RuntimeException('发布依赖材料状态与编译身份不一致');
         }
         if (is_array($manifest['dependency-notices'] ?? null) && !isset($release['files']['NOTICES.md'])) {
             throw new \RuntimeException('发布遗漏依赖材料阅读入口');
         }
-        foreach ([$launcher, 'runtime/php.ini', 'config/env.example', 'DEPLOY.md'] as $requiredFile) {
+        foreach ([$launcher, 'runtime/php.ini', 'config/env.example', 'DEPLOY.md', 'scripts/upgrade' . $scriptSuffix, 'scripts/rollback' . $scriptSuffix] as $requiredFile) {
             if (!isset($release['files'][$requiredFile])) { throw new \RuntimeException('发布清单遗漏必需文件'); }
         }
         foreach ($release['files'] as $relative => $entry) {
@@ -59,7 +65,8 @@ final class PackageRuntime
             $file = self::packageFile($root, $relative);
             if (filesize($file) !== $entry['bytes'] || TYPE_PACKAGE_SHA256($file) !== $entry['sha256']) { throw new \RuntimeException('发布文件完整性校验失败'); }
         }
-        if (PHP_OS_FAMILY !== 'Windows' && (!is_executable(self::packageFile($root, $binary)) || !is_executable(self::packageFile($root, 'run')))) {
+        if (PHP_OS_FAMILY !== 'Windows' && (!is_executable(self::packageFile($root, $binary)) || !is_executable(self::packageFile($root, 'run'))
+            || !is_executable(self::packageFile($root, 'scripts/upgrade')) || !is_executable(self::packageFile($root, 'scripts/rollback')))) {
             throw new \RuntimeException('发布程序或启动器缺少执行权限');
         }
         foreach ($manifest['resources'] ?? [] as $resource) {

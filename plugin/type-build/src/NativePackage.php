@@ -27,6 +27,7 @@ final class NativePackage
         $platform->assertArtifact($artifact);
         $reader = new ArtifactManifest();
         $manifest = $reader->read($artifact);
+        $reader->verifyCompiledFiles($manifest, true);
         if (($manifest['runtime']['os'] ?? null) !== PHP_OS_FAMILY || ($manifest['generator-protocols']['identity'] ?? 0) < 3
             || !is_array($manifest['extension-modules'] ?? null)) {
             throw new \RuntimeException('发布需要同平台身份生成协议3产物，请先重新构建');
@@ -112,7 +113,11 @@ final class NativePackage
             $this->write($stage, 'runtime/snmp/snmp.conf', "# 不加载宿主 MIB 或认证配置；专用 SNMP 业务须显式提供其运行资源。\nmibs :\n", 'runtime-configuration', $files);
             $launcher = PHP_OS_FAMILY === 'Windows' ? 'run.cmd' : 'run';
             $this->write($stage, $launcher, $this->launcher($binary, $interpreter), 'launcher', $files, 0755);
-            $instructions = "# 原生发布目录\n\n本目录不包含业务PHP源码、Composer或编译工具链。\n\n1. 从独立受信渠道核对release.json的SHA-256及发布来源。\n2. 将config/env.example复制为.env并填写实际配置，或通过外部环境/APP_BASE_PATH指定配置。秘密不应回写发布包。\n3. 执行./run verify-runtime（Windows为run.cmd verify-runtime）完成目标机审计，再按应用help执行迁移与启动。\n4. 数据、日志和.env由部署环境维护；升级采用新的版本目录，不覆盖旧目录。数据库变更的回滚能力由迁移计划决定。\n\n启动时检查文件字节与实际加载库，不替代发布渠道的真实性验证或操作系统安全。构建报告中的系统版本/映像要求仍适用；未经对应平台验收不得宣称支持。\n";
+            $scriptSuffix = PHP_OS_FAMILY === 'Windows' ? '.cmd' : '';
+            $scriptMode = PHP_OS_FAMILY === 'Windows' ? 0644 : 0755;
+            $this->write($stage, 'scripts/upgrade' . $scriptSuffix, $this->upgradeScript($scriptSuffix !== ''), 'maintenance-script', $files, $scriptMode);
+            $this->write($stage, 'scripts/rollback' . $scriptSuffix, $this->rollbackScript($scriptSuffix !== ''), 'maintenance-script', $files, $scriptMode);
+            $instructions = "# 原生发布目录\n\n本目录不包含业务PHP源码、Composer或编译工具链。迁移源文件不会进入发布目录；构建生成的 up/down 计划已绑定到原生程序身份，scripts/upgrade 和 scripts/rollback 只是跨平台启动包装器。\n\n1. 从独立受信渠道核对release.json的SHA-256及发布来源。\n2. 将config/env.example复制为.env并填写实际配置，或通过外部环境/APP_BASE_PATH指定配置。秘密不应回写发布包。\n3. 执行./run verify-runtime（Windows为run.cmd verify-runtime）完成目标机审计，再按应用help执行迁移与启动。\n4. 升级前停止写入者并完成备份，执行./scripts/upgrade（Windows为scripts\\upgrade.cmd）；脚本会先校验运行时、查询迁移状态，再应用待执行迁移。\n5. 需要回退时执行./scripts/rollback [步数]（Windows为scripts\\rollback.cmd [步数]）；脚本只执行显式 down，不能替代数据备份恢复。\n\n数据、日志和.env由部署环境维护；升级采用新的版本目录，不覆盖旧目录。MySQL 非事务 DDL 失败后先核对实际结构，再按操作手册执行 migrate recover。\n\n启动时检查文件字节与实际加载库，不替代发布渠道的真实性验证或操作系统安全。构建报告中的系统版本/映像要求仍适用；未经对应平台验收不得宣称支持。\n";
             if (isset($manifest['embedded-resources']['web/index.html'])) {
                 $instructions .= "\n## 内嵌页面\n\n前端原件已编入程序，运行包不需要外置dist或Node.js。物联中心首次在空库执行./run app:install <平台账号> <姓名>，平台初始口令由APP_PLATFORM_PASSWORD受控环境提供；安装只建立平台安装身份、公共菜单和平台超管，不预置Tenant或业务数据，同时写入应用根public。使用./run web:install --dry-run --force预览升级，再执行./run web:install --force更新页面。Windows使用run.cmd。普通启动不释放页面或运行库。\n\n数据库初始化成功而页面失败时，仅修复页面，不重新初始化数据库；安装锁和恢复记录在var/web-install。停止旧HTTP后更新页面再启动新程序，上传和其他非托管内容会保留。当前原生库仍位于目录包中，前端内嵌不代表完整静态单文件已完成。\n";
             }
@@ -141,6 +146,9 @@ final class NativePackage
                 'system-images' => $manifest['system-images'] ?? [], 'system-cache-policy' => $manifest['system-cache-policy'] ?? 'not-applicable',
                 'delay-imports' => $manifest['delay-imports'] ?? [],
                 'extension-modules' => $extensions, 'production-packages' => $manifest['production-packages'] ?? [],
+                'declaration-generation' => $manifest['declaration-generation'],
+                'compiled-files' => $manifest['compiled-files'],
+                'compiled-files-sha256' => $manifest['compiled-files-sha256'],
                 'dependency-notices' => $notices,
                 'embedded-resources' => $manifest['embedded-resources'] ?? [],
                 'files' => $files];
@@ -196,15 +204,23 @@ final class NativePackage
             throw new \RuntimeException('发布缺少原生产物');
         }
         $launcher = ($release['runtime']['os'] ?? '') === 'Windows' ? 'run.cmd' : 'run';
-        foreach ([$launcher, 'runtime/php.ini', 'config/env.example', 'DEPLOY.md'] as $requiredFile) {
+        $scriptSuffix = ($release['runtime']['os'] ?? '') === 'Windows' ? '.cmd' : '';
+        foreach ([$launcher, 'runtime/php.ini', 'config/env.example', 'DEPLOY.md', 'scripts/upgrade' . $scriptSuffix, 'scripts/rollback' . $scriptSuffix] as $requiredFile) {
             if (!isset($release['files'][$requiredFile])) {
                 throw new \RuntimeException('发布清单遗漏必需文件：' . $requiredFile);
             }
         }
-        if (($release['runtime']['os'] ?? '') !== 'Windows' && (!is_executable($this->file($directory, $binary)) || !is_executable($this->file($directory, 'run')))) {
+        if (($release['runtime']['os'] ?? '') !== 'Windows' && (!is_executable($this->file($directory, $binary)) || !is_executable($this->file($directory, 'run'))
+            || !is_executable($this->file($directory, 'scripts/upgrade')) || !is_executable($this->file($directory, 'scripts/rollback')))) {
             throw new \RuntimeException('发布程序或启动器缺少执行权限');
         }
         $manifest = (new ArtifactManifest())->read($this->file($directory, $binary), $release['artifact']['build-id'], $release['artifact']['sha256']);
+        (new ArtifactManifest())->verifyCompiledFiles($manifest, true);
+        foreach (['declaration-generation', 'compiled-files', 'compiled-files-sha256'] as $key) {
+            if (($release[$key] ?? null) !== ($manifest[$key] ?? null)) {
+                throw new \RuntimeException('发布的编译生成文件身份与编译产物不一致：' . $key);
+            }
+        }
         if (($release['embedded-resources'] ?? []) !== ($manifest['embedded-resources'] ?? [])) {
             throw new \RuntimeException('发布的内嵌资源与编译身份不一致');
         }
@@ -340,6 +356,52 @@ SH;
             return $prefix . "\nDYLD_LIBRARY_PATH=\"\$root/lib\"\nexport DYLD_LIBRARY_PATH\nexec \"\$root/bin/app\" \"\$@\"\n";
         }
         return $prefix . "\nLD_LIBRARY_PATH=\"\$root/lib\"\nexport LD_LIBRARY_PATH\nexec \"\$root/lib/" . $interpreter . "\" --library-path \"\$root/lib\" \"\$root/bin/app\" \"\$@\"\n";
+    }
+
+    private function upgradeScript(bool $windows): string
+    {
+        if ($windows) {
+            return "@echo off\r\nsetlocal\r\nif not \"%~1\"==\"\" (echo 用法：scripts\\upgrade.cmd 1>&2 & exit /b 2)\r\ncall \"%~dp0..\\run.cmd\" verify-runtime\r\nif errorlevel 1 exit /b %errorlevel%\r\ncall \"%~dp0..\\run.cmd\" migrate status\r\nif errorlevel 1 exit /b %errorlevel%\r\ncall \"%~dp0..\\run.cmd\" migrate up\r\nexit /b %errorlevel%\r\n";
+        }
+        return <<<'SH'
+#!/bin/sh
+set -eu
+if [ "$#" -ne 0 ]; then
+    echo "用法：scripts/upgrade" >&2
+    exit 2
+fi
+root=$(CDPATH='' cd -- "${0%/*}/.." && pwd -P)
+"$root/run" verify-runtime
+"$root/run" migrate status
+"$root/run" migrate up
+SH
+            . "\n";
+    }
+
+    private function rollbackScript(bool $windows): string
+    {
+        if ($windows) {
+            return "@echo off\r\nsetlocal EnableExtensions EnableDelayedExpansion\r\nif not \"%~2\"==\"\" (echo 用法：scripts\\rollback.cmd [步数] 1>&2 & exit /b 2)\r\nset \"steps=%~1\"\r\nif \"!steps!\"==\"\" set \"steps=1\"\r\nfor /f \"delims=0123456789\" %%A in (\"!steps!\") do if not \"%%A\"==\"\" (echo 回退步数必须为正整数 1>&2 & exit /b 2)\r\necho(!steps!| findstr /r /x \"[1-9][0-9]*\" >nul || (echo 回退步数必须为正整数 1>&2 & exit /b 2)\r\ncall \"%~dp0..\\run.cmd\" verify-runtime\r\nif errorlevel 1 exit /b %errorlevel%\r\ncall \"%~dp0..\\run.cmd\" migrate status\r\nif errorlevel 1 exit /b %errorlevel%\r\ncall \"%~dp0..\\run.cmd\" migrate rollback \"!steps!\"\r\nexit /b %errorlevel%\r\n";
+        }
+        return <<<'SH'
+#!/bin/sh
+set -eu
+if [ "$#" -gt 1 ]; then
+    echo "用法：scripts/rollback [步数]" >&2
+    exit 2
+fi
+steps=${1:-1}
+case "$steps" in
+    ''|*[!0-9]*) echo "回退步数必须为正整数" >&2; exit 2 ;;
+    *[1-9]*) ;;
+    *) echo "回退步数必须为正整数" >&2; exit 2 ;;
+esac
+root=$(CDPATH='' cd -- "${0%/*}/.." && pwd -P)
+"$root/run" verify-runtime
+"$root/run" migrate status
+"$root/run" migrate rollback "$steps"
+SH
+            . "\n";
     }
 
     private function file(string $root, string $relative): string

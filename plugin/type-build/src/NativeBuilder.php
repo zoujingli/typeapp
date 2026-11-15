@@ -577,7 +577,9 @@ final class NativeBuilder
             'system-link-flags' => $static === null ? $libraries : $static->systemFlags(),
             'artifact-stripping' => $static === null ? null : ($platform->family() === 'Linux' ? 'elf-strip-debug-symbols-v1' : ($platform->family() === 'Darwin' ? 'strip-x-v1' : 'msvc-release-no-pdb-v1')),
             'resource-generation' => $resourceIdentity, 'embedded-resources' => $embeddedManifest,
-            'declaration-generation' => $generation['identity']];
+            'declaration-generation' => $generation['identity'],
+            'compiled-files' => $generation['metadata']['files'],
+            'compiled-files-sha256' => BuildIdentity::digest($generation['metadata']['files'])];
         $identity = $identityBuilder->create($groups, $facts);
         if ($stage !== null) {
             $auditPaths = $applicationAuditInputs;
@@ -599,6 +601,8 @@ final class NativeBuilder
             'dependency-notices' => $notices['summary'],
             'extension-modules' => $native['extension-modules'],
             'source-adaptations' => $adaptation['mapping'], 'declaration-generation' => $generation['identity'],
+            'compiled-files' => $generation['metadata']['files'],
+            'compiled-files-sha256' => BuildIdentity::digest($generation['metadata']['files']),
             'native-libraries' => $native['native-libraries'], 'capabilities' => $capabilities, 'generator-protocols' => BuildIdentity::GENERATORS,
             'composer-lock-sha256' => hash_file('sha256', $root . '/composer.lock'), 'toolchain-lock-sha256' => hash_file('sha256', $root . '/toolchain.lock.json'),
             'tools' => $native['tools'], 'tool-dependencies' => $native['tool-dependencies'], 'target-triple' => $native['target-triple'], 'extension-abi' => $native['extension-abi'],
@@ -614,6 +618,7 @@ final class NativeBuilder
             $manifest['runtime-linkage'] = 'static';
             $manifest['static-runtime'] = $static->identity();
         }
+        (new ArtifactManifest())->verifyCompiledFiles($manifest, true);
         $identityFile = $buildDirectory . '/generated-build-identity.php';
         $this->writeText($identityFile, (new ArtifactManifest())->accessor($manifest));
         $project['sources'][] = $identityFile;
@@ -712,6 +717,8 @@ final class NativeBuilder
             'assembly' => $assembly,
             'declaration-generation' => $generation['identity'],
             'declaration-metadata' => $generation['metadata'],
+            'compiled-files' => $generation['metadata']['files'],
+            'compiled-files-sha256' => BuildIdentity::digest($generation['metadata']['files']),
             'original-sources' => $generation['original-sources'],
             'models' => $modelDeclarations,
             'schemas' => $generation['schemas']['schemas'],

@@ -40,6 +40,45 @@ expect(isset($release['files']['LICENSE'], $release['files']['NOTICE'])
     && file_get_contents($package . '/LICENSE') === file_get_contents($project . '/LICENSE')
     && file_get_contents($package . '/NOTICE') === file_get_contents($project . '/NOTICE'), '发布未包含当前应用的完整第一方许可证材料');
 $compiledIdentity = (new ArtifactManifest())->read($artifact);
+expect(
+    is_array($compiledIdentity['compiled-files'] ?? null)
+    && ($release['compiled-files'] ?? null) === $compiledIdentity['compiled-files']
+    && ($release['compiled-files-sha256'] ?? null) === ($compiledIdentity['compiled-files-sha256'] ?? null)
+    && ($release['declaration-generation'] ?? null) === ($compiledIdentity['declaration-generation'] ?? null),
+    '发布清单没有保留编译生成文件身份'
+);
+$scriptSuffix = PHP_OS_FAMILY === 'Windows' ? '.cmd' : '';
+$upgradeScript = $package . '/scripts/upgrade' . $scriptSuffix;
+$rollbackScript = $package . '/scripts/rollback' . $scriptSuffix;
+expect(isset($release['files']['scripts/upgrade' . $scriptSuffix], $release['files']['scripts/rollback' . $scriptSuffix])
+    && is_file($upgradeScript) && is_file($rollbackScript), '发布没有包含升级与回退脚本');
+$upgradeContents = (string)file_get_contents($upgradeScript);
+$rollbackContents = (string)file_get_contents($rollbackScript);
+expect(
+    str_contains($upgradeContents, 'verify-runtime') && str_contains($upgradeContents, 'migrate status') && str_contains($upgradeContents, 'migrate up')
+    && str_contains($rollbackContents, 'verify-runtime') && str_contains($rollbackContents, 'migrate status') && str_contains($rollbackContents, 'migrate rollback'),
+    '升级与回退脚本没有调用受信主程序迁移入口'
+);
+if (PHP_OS_FAMILY !== 'Windows') {
+    expect(is_executable($upgradeScript) && is_executable($rollbackScript), 'Unix升级与回退脚本缺少执行权限');
+}
+$descriptor = $package . '/release.json';
+$savedDescriptor = (string)file_get_contents($descriptor);
+$forgedCompiled = $release;
+$forgedCompiled['compiled-files-sha256'] = str_repeat('0', 64);
+file_put_contents($descriptor, json_encode($forgedCompiled, JSON_THROW_ON_ERROR));
+try {
+    $compiledRejected = false;
+    try {
+        $publisher->verify($package, (string)hash_file('sha256', $descriptor));
+    } catch (RuntimeException $error) {
+        $compiledRejected = str_contains($error->getMessage(), '编译') || str_contains($error->getMessage(), '声明代次');
+    }
+    expect($compiledRejected, '篡改编译生成文件汇总身份没有被发布校验拒绝');
+} finally {
+    file_put_contents($descriptor, $savedDescriptor);
+}
+$publisher->verify($package, $created['manifest-sha256']);
 $resourcePrefix = $release['artifact']['path'] . '.resources/' . $compiledIdentity['resource-generation'] . '/';
 $notices = json_decode((string)file_get_contents($package . '/' . $resourcePrefix . $compiledIdentity['dependency-notices']['index']), true, 128, JSON_THROW_ON_ERROR);
 $thirdPartyDocuments = 0;

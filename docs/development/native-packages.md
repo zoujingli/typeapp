@@ -21,6 +21,8 @@ gzip归档先流式核对展开字节数及SHA-256与磁盘tar完全一致，再
 ```text
 release.json                       版本、目标、构建身份、依赖与文件摘要
 run / run.cmd                      本平台启动入口
+scripts/upgrade[.cmd]              校验运行时并应用待执行迁移
+scripts/rollback[.cmd]             校验运行时并回退显式 down（默认 1 步）
 bin/app[.exe]                      原生应用
 bin/app[.exe].resources/<代次>/     仅属于本构建的资源
 lib/                               Unix应用运行库；Windows DLL放在bin
@@ -45,6 +47,15 @@ NOTICES.md                         依赖材料索引与覆盖状态的阅读入
 ```
 
 后续命令取决于包内应用：通用模板执行 `./run migrate run` 后 `./run serve`；物联中心在空库执行带账号参数的 `./run app:install`，随后可用同一 `./run migrate run/up` 应用后续版本。人员参数与受控口令环境见[应用初始化](typeapp.md#准备与初始化)。
+
+升级和回退使用包内脚本，脚本只调用同目录的 `run`/`run.cmd`，不会读取源码或 Composer：
+
+```sh
+./scripts/upgrade
+./scripts/rollback 1
+```
+
+迁移源文件不会进入发布目录；构建生成的 `up/down` 计划已绑定到原生程序身份，包内脚本只是跨平台启动包装器。脚本会先执行 `verify-runtime` 和 `migrate status`。执行前应停止写入者并完成备份；回退只执行迁移显式提供的 `down`，不能替代数据恢复。Windows 对应 `scripts\upgrade.cmd` 和 `scripts\rollback.cmd`。
 
 Windows使用`run.cmd`。将`config/env.example`复制为`.env`并填入实际部署值，或通过外部环境/APP_BASE_PATH指定配置。秘密、数据库、日志与上传数据由部署环境维护，不回写不可变发布载荷。
 

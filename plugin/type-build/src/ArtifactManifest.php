@@ -56,6 +56,7 @@ final class ArtifactManifest
         if ($format === 'Mach-O') {
             $manifest = $this->readMachO($artifact);
             $this->verifyEmbeddedResources($manifest);
+            $this->verifyCompiledFiles($manifest);
             if ($expectedBuildId !== null && $manifest['build-id'] !== $expectedBuildId) {
                 throw new \RuntimeException('产物不是要求的构建身份');
             }
@@ -92,6 +93,7 @@ final class ArtifactManifest
                 throw new \RuntimeException('二进制格式与产物清单不一致');
             }
             $this->verifyEmbeddedResources($manifest);
+            $this->verifyCompiledFiles($manifest);
             rewind($handle);
             $hash = hash_init('sha256');
             hash_update_stream($hash, $handle, $manifest['elf-bytes']);
@@ -165,6 +167,41 @@ final class ArtifactManifest
             if (!is_file($file) || !hash_equals($resource['sha256'], (string)hash_file('sha256', $file))) {
                 throw new \RuntimeException('部署资源与构建清单不一致');
             }
+        }
+    }
+
+    /**
+     * 校验构建期生成文件的相对路径、摘要和声明代次。文件本身不进入运行包，
+     * 这里校验的是已绑定到原生产物的编译身份；构建入口可要求该字段必须存在。
+     * @param array<string, mixed> $manifest
+     */
+    public function verifyCompiledFiles(array $manifest, bool $required = false): void
+    {
+        $files = $manifest['compiled-files'] ?? null;
+        if ($files === null) {
+            if ($required || array_key_exists('compiled-files-sha256', $manifest)) {
+                throw new \RuntimeException('产物缺少生成编译文件清单');
+            }
+            return;
+        }
+        if (!is_array($files) || count($files) > 4096 || ($files !== [] && array_is_list($files))) {
+            throw new \RuntimeException('生成编译文件清单无效');
+        }
+        foreach ($files as $relative => $sha256) {
+            if (!is_string($relative) || preg_match('~^[A-Za-z0-9][A-Za-z0-9._/-]{0,511}$~D', $relative) !== 1
+                || str_contains($relative, '//') || preg_match('~(?:^|/)(?:\.{1,2})(?:/|$)~', $relative)
+                || !is_string($sha256) || preg_match('/^[a-f0-9]{64}$/D', $sha256) !== 1) {
+                throw new \RuntimeException('生成编译文件条目无效');
+            }
+        }
+        if (!is_string($manifest['compiled-files-sha256'] ?? null)
+            || preg_match('/^[a-f0-9]{64}$/D', $manifest['compiled-files-sha256']) !== 1
+            || !hash_equals($manifest['compiled-files-sha256'], BuildIdentity::digest($files))) {
+            throw new \RuntimeException('生成编译文件清单摘要不一致');
+        }
+        if (!is_string($manifest['declaration-generation'] ?? null)
+            || preg_match('/^[a-f0-9]{64}$/D', $manifest['declaration-generation']) !== 1) {
+            throw new \RuntimeException('产物缺少生成声明身份');
         }
     }
 

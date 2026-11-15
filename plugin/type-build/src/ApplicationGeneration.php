@@ -163,6 +163,7 @@ final class ApplicationGeneration
             $references[$directory . '/' . $relative] = 'generated:' . $relative;
             $hashes[$relative] = hash('sha256', $code);
         }
+        $this->verifyGeneratedFiles($directory, $generated);
         $symbols = $this->symbols($effective, $references);
         $replacementMap = [];
         foreach ($replacements as $original => $replacement) {
@@ -192,6 +193,31 @@ final class ApplicationGeneration
         }
         $generated[$name] = $code;
         return $target;
+    }
+
+    /**
+     * 生成文件必须与写入磁盘的字节逐一相同；运行时不会重新解释这些文件。
+     * @param array<string, string> $generated
+     */
+    private function verifyGeneratedFiles(string $directory, array $generated): void
+    {
+        foreach ($generated as $relative => $code) {
+            if (!is_string($relative) || preg_match('~^[A-Za-z0-9][A-Za-z0-9._/-]{0,511}$~D', $relative) !== 1
+                || str_contains($relative, '//') || preg_match('~(?:^|/)(?:\.{1,2})(?:/|$)~', $relative)
+                || !is_string($code)) {
+                throw new \RuntimeException('生成文件路径或内容无效');
+            }
+            $file = $directory . '/' . $relative;
+            if (!is_file($file) || filesize($file) !== strlen($code)
+                || !hash_equals(hash('sha256', $code), (string)hash_file('sha256', $file))) {
+                throw new \RuntimeException('生成文件写入后校验失败：' . $relative);
+            }
+            if ($relative === 'generated-migrations.php'
+                && (!str_contains($code, 'new Migration(') || substr_count($code, ', array (') < 2
+                    || str_contains($code, 'MigrationFiles::load') || preg_match('/\b(?:glob|include|require)\s*\(/', $code))) {
+                throw new \RuntimeException('生成迁移表缺少可回滚结构或包含运行时源码加载');
+            }
+        }
     }
 
     /**
