@@ -14,7 +14,7 @@ cc "${task_includes[@]}" "$task_root/tools/embed-runtime-probe.c" -L"$task_sdk/l
 if [[ -n "${TYPE_NATIVE_PHP_INI:-}" && -f "$TYPE_NATIVE_PHP_INI" ]]; then
   task_configure_env=(env "PHPRC=$TYPE_NATIVE_PHP_INI" PHP_INI_SCAN_DIR=)
 else
-  task_configure_env=(env -u PHPRC PHP_INI_SCAN_DIR=)
+  task_configure_env=(env PHPRC= PHP_INI_SCAN_DIR=)
 fi
 "${task_configure_env[@]}" "$task_sdk/bin/php" "$task_root/tools/configure-embed-runtime.php" "$task_work" base >/dev/null
 
