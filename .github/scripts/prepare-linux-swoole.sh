@@ -96,6 +96,9 @@ export PHP_INI_SCAN_DIR="$task_scan"
 # 使用同一套 SDK，否则会出现 socket_ce 等 ABI 符号缺失。
 printf '%s\n' "$PHP_HOME/bin" >> "$GITHUB_PATH"
 export PATH="$PHP_HOME/bin:$PATH"
+# GitHub runner 将 GITHUB_PATH 条目追加到当前 PATH；显式写入环境变量，
+# 确保下一步 shell 仍把本轮 SDK 放在 setup-php 的同版本目录之前。
+printf 'PATH=%s:%s\n' "$PHP_HOME/bin" "$PATH" >> "$GITHUB_ENV"
 hash -r
 printf '受控 PHP：%s\n' "$(command -v php)"
 "$PHP_HOME/bin/php" -r 'printf("PHP %s %s\n", PHP_VERSION, PHP_ZTS ? "ZTS" : "NTS");'
