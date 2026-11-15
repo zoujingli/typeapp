@@ -18,6 +18,7 @@ final class GeneratedArtifactTest extends TestCase
     public function testCompiledFilesIdentityAcceptsEmptyAndNonEmptySets(): void
     {
         $reader = new ArtifactManifest();
+        $accepted = 0;
         foreach ([
             [],
             ['generated-migrations.php' => hash('sha256', "<?php\n")],
@@ -27,8 +28,9 @@ final class GeneratedArtifactTest extends TestCase
                 'compiled-files-sha256' => BuildIdentity::digest($files),
                 'declaration-generation' => str_repeat('a', 64),
             ], true);
-            self::assertTrue(true);
+            ++$accepted;
         }
+        self::assertSame(2, $accepted);
     }
 
     public function testCompiledFilesIdentityRejectsPathAndDigestTampering(): void
