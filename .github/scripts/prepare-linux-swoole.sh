@@ -74,10 +74,17 @@ printf '受控 Swoole PDO 钩子：%s\n' "$task_hooks"
 # 受控模块写入独立扫描目录；保留 setup-php 原扫描目录中的 PDO 等基础扩展。
 task_cli_d="$GITHUB_WORKSPACE/.cache/typeapp-php.d"
 mkdir -p "$task_cli_d"
+# 这些共享模块统一由下方同一扫描目录提供，避免主 INI 与扫描目录重复加载。
+task_clean="$(mktemp)"
+awk 'tolower($0) !~ /^[[:space:]]*extension[[:space:]]*=.*(curl|redis|sockets|swoole)([.]so)?/' "$task_ini" > "$task_clean"
+mv "$task_clean" "$task_ini"
 printf 'extension=%s\n' "$task_socket_module" > "$task_cli_d/00-typeapp-sockets.ini"
 task_redis_module="$("$PHP_HOME/bin/php-config" --extension-dir)/redis.so"
 [[ -f "$task_redis_module" ]] || { echo "PHP SDK 缺少 redis.so：$task_redis_module" >&2; exit 1; }
 printf 'extension=%s\n' "$task_redis_module" > "$task_cli_d/10-typeapp-redis.ini"
+task_curl_module="$("$PHP_HOME/bin/php-config" --extension-dir)/curl.so"
+[[ -f "$task_curl_module" ]] || { echo "PHP SDK 缺少 curl.so：$task_curl_module" >&2; exit 1; }
+printf 'extension=%s\n' "$task_curl_module" > "$task_cli_d/20-typeapp-curl.ini"
 printf 'extension=%s\nswoole.enable_fiber_mock=On\n' "$task_swoole_module" > "$task_cli_d/zz-typeapp-swoole.ini"
 # task_ini 已经合并了本轮需要的 PDO、curl、Redis、pcntl 等声明；关闭原始
 # 扫描目录，确保 sockets 与 Swoole 只在同一目录按 00/zz 顺序装载。
