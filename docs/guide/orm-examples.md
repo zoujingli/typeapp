@@ -19,6 +19,20 @@ composer test:orm-suite
 composer test:orm-suite-native
 ```
 
+需要只跑一个驱动或保留该驱动的原始日志时，直接调用消费者：
+
+```bash
+php tests/orm-suite-consumer.php sqlite
+php tests/orm-suite-consumer.php mysql
+php tests/orm-suite-consumer.php pgsql
+
+php tests/orm-suite-consumer.php sqlite --native
+php tests/orm-suite-consumer.php mysql --native
+php tests/orm-suite-consumer.php pgsql --native
+```
+
+三库消费者的连接参数、临时数据库生命周期、源码移除清单和回执字段见[ORM 独立消费矩阵](../development/orm-consumer-matrix.md)。
+
 原生套件先构建单程序，再移走应用源码、Composer 和 `web/dist`，使用最终程序重复三库测试。它证明的是 AOT 程序行为；普通 PHP 套件用于更快的开发反馈。
 
 ## 案例与源码对照
