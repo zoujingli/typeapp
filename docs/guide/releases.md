@@ -2,11 +2,11 @@
 
 版本由主仓的不可变 tag 驱动：`vX.Y.Z` 是正式版本，`vX.Y.Z-rc.N` 是候选版本。一次发布关联同一主仓提交、组件、应用模板和 Linux x64、Linux ARM64、macOS ARM64 三个平台的数据库 profile 矩阵；Windows 只保留诊断工作流，不生成 RC 附件。RC 标记为预发布，不成为稳定最新版。
 
-当前候选为 `v1.0.0-rc.19`，tag 固定到 `b485f0bbc8d7578749a1dce98d7586897f9e00fe`，目标为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个单文件程序；Windows x64 只保留诊断。GitHub Release、附件和 Packagist 回读尚未完成，不能使用“已公开”措辞。历史 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14) 的四平台十二程序结果保留在[升级验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。RC13 的标签、附件和验收身份保持不变。
+当前候选为 `v1.0.0-rc.19`，tag 固定到 `b485f0bbc8d7578749a1dce98d7586897f9e00fe`，目标为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个单文件程序；Windows x64 只保留诊断。GitHub 预发布 Release 已创建，当前已回读 Linux x64 与 Linux ARM64 的 6 个程序附件；macOS ARM64 三个附件仍待补齐，不能把当前状态描述为完整九 profile 发布。历史 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14) 的四平台十二程序结果保留在[升级验收记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。RC13 的标签、附件和验收身份保持不变。
 
 每个“平台 × profile”下载一个可执行文件，外置配置独立维护。PHP、PHPX、Swoole 等非系统原生库已静态链接，普通启动不释放运行库。历史 RC7 的目录归档与旧标签保持原样，其使用方式和验收身份保留在[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/rc-release-20260926.md)。
 
-本轮候选为 **RC19**，只对 Linux x64、Linux ARM64、macOS ARM64 生成发布候选；Windows 原生工作流保留为诊断，不生成版本附件。下面的 RC19 安装命令必须等 GitHub Release 和附件实际公开后使用；RC14 的源码、标签和验收结论保持原身份。
+本轮候选为 **RC19**，预发布 Release 当前提供 Linux x64、Linux ARM64 的 6 个程序附件；macOS ARM64 仍在等待 runner，Windows 原生工作流保留为诊断。安装时只选择 Release 中已公开且匹配的平台与数据库程序；RC14 的源码、标签和验收结论保持原身份。
 
 RC15 的独立脚手架安装存在测试来源的版本声明冲突，Windows 教程还暴露了普通 embed 停服时类元数据提前释放的问题，未公开 Release。其标签保留原提交；修复后的模板消费与后续验收使用 RC19，不移动旧标签。生命周期修复及回归边界见[TypePHP 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md#embed-请求与模块生命周期)。
 
@@ -61,7 +61,7 @@ flowchart TB
 
 ## 下载程序
 
-[v1.0.0-rc.19 下载页](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.19)在发布完成后提供带数据库 profile 的程序附件。每次部署只下载匹配平台和数据库的一个程序；其余 8 个程序是其他环境的选择项。发布附件共 11 项：9 个程序、`SHA256SUMS` 和 `release-manifest.json`，不包含重建 SDK。历史版本的附件名称和摘要不变。
+[v1.0.0-rc.19 下载页](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.19)在当前预发布页提供 Linux x64 与 Linux ARM64 的数据库 profile 程序附件。每次部署只下载匹配平台和数据库的一个程序；其余 8 个程序是其他环境的选择项。当前 Release 附件共 8 项：6 个 Linux 程序、`SHA256SUMS` 和 `release-manifest.json`，不包含重建 SDK；macOS 三个程序补齐后再扩展清单。历史版本的附件名称和摘要不变。
 
 选择与操作系统、CPU、系统库基线和数据库匹配的附件，具体要求见[平台与验收](platforms.md)。文件名中的版本不带前缀 `v`：
 

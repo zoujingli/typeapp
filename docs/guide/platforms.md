@@ -16,11 +16,11 @@
 | Linux x64 / ARM64 | 本轮未用当前提交重跑正式矩阵 | 不能使用历史工作流或其他提交的结果替代 |
 | Windows x64 | 本机没有 Windows runner、PowerShell、PE SDK 和 Windows 数据库 | Windows SDK、PE 构建及三库应用链路未验证 |
 
-当前发布平台/profile 矩阵仍按本页和对应 Actions 回执核对；RC19 只有 tag，尚未创建 GitHub Release。Windows 诊断失败不改变 Linux/macOS 候选范围；历史发布版的四平台记录继续保留在下方，不能作为当前提交的通过证据。
+当前发布平台/profile 矩阵仍按本页和对应 Actions 回执核对；RC19 已创建为预发布 GitHub Release，当前公开 Linux x64 与 Linux ARM64 的 6 个 profile；macOS ARM64 三个附件仍待补齐。Windows 诊断失败不改变 Linux/macOS 候选范围；历史发布版的四平台记录继续保留在下方，不能作为当前提交的通过证据。
 
 ## 历史发布状态
 
-历史已公开版本为 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14)；当前 RC19 只有 tag，尚未公开 Release。同一源码已完成四平台完整验收，四个平台各提供 `sqlite`、`mysql`、`pgsql` 程序；12 个最终程序均完成对应数据库的隔离部署和公开下载摘要核验。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
+历史已公开版本为 [v1.0.0-rc.14](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.14)；当前 RC19 已公开为预发布 Release，暂提供 Linux x64 与 Linux ARM64 的 6 个程序；macOS ARM64 三个程序尚未发布。同一源码已完成四平台完整验收，四个平台各提供 `sqlite`、`mysql`、`pgsql` 程序；12 个最终程序均完成对应数据库的隔离部署和公开下载摘要核验。跨仓分发、公开消费与 Release 流程见[版本发布](releases.md)。
 
 以下记录 2026-11-07 历史工作流实际使用的源码身份：
 

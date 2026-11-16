@@ -27,7 +27,7 @@
   </div>
 </section>
 
-> **交付一个主程序文件，配置独立维护，启动不释放运行库。** 当前 `v1.0.0-rc.19` 已固定到 `b485f0bbc8d7578749a1dce98d7586897f9e00fe`，发布候选目标为三平台 × 三个数据库 profile，共 9 个静态单程序；Windows x64 只保留诊断，不生成 RC 附件。RC19 尚未创建 GitHub Release，下载链接在候选通过后才可使用。部署端无需安装 PHP、Swoole、Composer 或 Node.js；使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
+> **交付一个主程序文件，配置独立维护，启动不释放运行库。** 当前 `v1.0.0-rc.19` 已固定到 `b485f0bbc8d7578749a1dce98d7586897f9e00fe`，发布候选目标为三平台 × 三个数据库 profile，共 9 个静态单程序；Windows x64 只保留诊断，不生成 RC 附件。RC19 已创建为预发布 Release，当前公开 Linux x64 与 Linux ARM64 的 6 个 profile；macOS ARM64 三个附件仍待补齐，下载前按平台与数据库选择已公开程序。部署端无需安装 PHP、Swoole、Composer 或 Node.js；使用前按[构建与部署](guide/deployment.md)核对系统基线与所需业务服务。
 
 <div class="feature-grid">
   <div><span class="feature-number">01 / DEVELOP</span><h2>按业务组合</h2><p>路由、模型、通信与任务，<br>通过组件形成应用。</p></div>
@@ -39,7 +39,7 @@
 
 从 `type-project` 创建应用，用 Composer 安装所需的框架组件，再编译和验证自己的业务。先阅读[环境与依赖](guide/environment.md)区分开发机、构建机与部署机；[基础能力](guide/capabilities.md)帮助确定应用需要哪些组件。物联中心展示设备接入与多租户业务的组合方式。
 
-物联中心当前以 RC19 候选源码为准：前端在构建期编入主程序，首次安装同时准备账号和页面，后续由显式命令更新托管静态文件。RC19 的三平台九 profile 尚未形成公开 Release；安装步骤见[版本下载](guide/releases.md)，页面更新与修复见[前端安装与更新](guide/deployment.md#前端安装与更新)。历史 RC14 的公开下载与四平台验收保留在版本页。
+物联中心当前以 RC19 候选源码为准：前端在构建期编入主程序，首次安装同时准备账号和页面，后续由显式命令更新托管静态文件。RC19 已形成预发布 Release，当前公开 Linux x64 与 Linux ARM64 的 6 个 profile；macOS ARM64 三个附件仍待补齐；安装步骤见[版本下载](guide/releases.md)，页面更新与修复见[前端安装与更新](guide/deployment.md#前端安装与更新)。历史 RC14 的公开下载与四平台验收保留在版本页。
 
 <div class="doc-paths">
   <a class="start-guide" href="#/guide/quickstart">

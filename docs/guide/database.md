@@ -10,7 +10,7 @@ ORM 使用 PDO 访问数据库协议，Swoole 提供协程上下文、等待、C
 
 当前 RC19 候选已具备从模型声明、数据读写到事务与资源收尾的主路径；表格只列当前明确支持和有意保留的边界。下表区分模型能力与底层表查询；已有 SQL 接口不代表它自动执行模型字段、租户、软删除、版本或事件规则。
 
-本页的 `ModelQuery::sum/avg/min/max`、`insertMany`、受管时间字段、`firstOrCreate`、`upsert/upsertAnyUnique` 和所选 PDO hook 前置检查均已纳入 RC19 候选代码。RC19 尚未公开 Release；开发应用仍须使用同一批组件并重新构建，版本安装按[发布说明](releases.md)核对。
+本页的 `ModelQuery::sum/avg/min/max`、`insertMany`、受管时间字段、`firstOrCreate`、`upsert/upsertAnyUnique` 和所选 PDO hook 前置检查均已纳入 RC19 候选代码。RC19 已创建为预发布 Release；当前公开附件仅覆盖 Linux x64 与 Linux ARM64，开发应用仍须使用同一批组件并重新构建，版本安装按[发布说明](releases.md)核对。
 
 | 需求 | 当前能力 | 使用边界 |
 | --- | --- | --- |

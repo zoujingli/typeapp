@@ -19,7 +19,7 @@
 
 ## 当前构建状态
 
-RC19 候选固定到 `b485f0bbc8d7578749a1dce98d7586897f9e00fe`，目标为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个 profile；Windows x64 当前只保留诊断。RC19 尚未创建 GitHub Release 或下载附件。每个程序只包含对应数据库驱动和已启用功能；`DB_DRIVER` 不匹配时在启动或迁移前返回 `runtime_profile_database_mismatch`。每次部署选择一个匹配程序，不能在同一程序中切换数据库。
+RC19 候选固定到 `b485f0bbc8d7578749a1dce98d7586897f9e00fe`，目标为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个 profile；Windows x64 当前只保留诊断。RC19 已创建为预发布 GitHub Release，当前公开 Linux x64 与 Linux ARM64 的 6 个 profile；macOS ARM64 三个附件仍待补齐。每个程序只包含对应数据库驱动和已启用功能；`DB_DRIVER` 不匹配时在启动或迁移前返回 `runtime_profile_database_mismatch`。每次部署选择一个匹配程序，不能在同一程序中切换数据库。
 
 | 已实现路径 | 验收与边界 |
 | --- | --- |

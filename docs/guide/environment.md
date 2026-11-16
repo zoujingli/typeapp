@@ -2,7 +2,7 @@
 
 部署已验证的 TypeApp 单程序时，不需要另行安装 PHP、Swoole、Composer、Node.js 或编译工具。非系统原生运行库由构建流程校验并静态链接进程序；部署者准备匹配的操作系统与系统库基线、配置及应用实际使用的业务服务。
 
-RC19 候选目标为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个单文件程序；Windows x64 仅保留诊断，RC19 尚未创建公开 Release。部署时只选择一个匹配平台和数据库的程序，配置可由环境变量或外置 `.env` 提供。普通启动不释放运行库；物联中心的页面由显式安装命令写入 `public/`。文件形态、系统基线和边界见[构建与部署](deployment.md#当前构建状态)。
+RC19 候选目标为 Linux x64、Linux ARM64、macOS ARM64 × `sqlite`、`mysql`、`pgsql`，共 9 个单文件程序；Windows x64 仅保留诊断，RC19 已创建为预发布 Release，当前公开 Linux x64 与 Linux ARM64 的 6 个 profile；macOS ARM64 三个附件仍待补齐。部署时只选择一个匹配平台和数据库的程序，配置可由环境变量或外置 `.env` 提供。普通启动不释放运行库；物联中心的页面由显式安装命令写入 `public/`。文件形态、系统基线和边界见[构建与部署](deployment.md#当前构建状态)。
 
 ## 运行环境
 
