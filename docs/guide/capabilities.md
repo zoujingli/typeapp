@@ -56,7 +56,7 @@ MQTT 完整规范义务、故障域与容量仍需逐项闭合，详见[实现�
 
 PostgreSQL 已有完整重置后物理 PDO 复用；MySQL、SQLite 当前安全关闭，完整复用仍是待交付能力。逻辑租约复用与物理连接复用不能混称。
 
-RC19 候选提供模型聚合、批量写入、受管时间、关系写入、`firstOrCreate()`、驱动专属 upsert 和 Schema 声明；创建协程 PDO 前检查所选驱动的官方 hook。当前程序的原生与发布矩阵仍需按三平台九 profile 单独验收，不能使用历史 RC14 结果替代。MySQL/SQLite 完整会话重置复用继续保留专项。具体[能力边界](database.md#常用能力边界)与 [ORM 补齐顺序](roadmap.md#orm-补齐顺序)分别说明现有入口和验收要求。
+RC19 候选提供模型聚合、批量写入、受管时间、关系写入、`firstOrCreate()`、驱动专属 upsert 和 Schema 声明；创建协程 PDO 前检查所选驱动的官方 hook。Linux x64 与 Linux ARM64 的 6 个静态 profile 已进入预发布附件，macOS ARM64 三个程序仍待生成，完整三平台九 profile 不能使用历史 RC14 结果替代。MySQL/SQLite 完整会话重置复用继续保留专项。具体[能力边界](database.md#常用能力边界)与 [ORM 补齐顺序](roadmap.md#orm-补齐顺序)分别说明现有入口和验收要求。
 
 ## 后台任务与通用服务
 

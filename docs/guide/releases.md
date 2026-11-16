@@ -61,7 +61,7 @@ flowchart TB
 
 ## 下载程序
 
-[v1.0.0-rc.19 下载页](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.19)在当前预发布页提供 Linux x64 与 Linux ARM64 的数据库 profile 程序附件。每次部署只下载匹配平台和数据库的一个程序；其余 8 个程序是其他环境的选择项。当前 Release 附件共 8 项：6 个 Linux 程序、`SHA256SUMS` 和 `release-manifest.json`，不包含重建 SDK；macOS 三个程序补齐后再扩展清单。历史版本的附件名称和摘要不变。
+[v1.0.0-rc.19 下载页](https://github.com/zoujingli/typeapp/releases/tag/v1.0.0-rc.19)在当前预发布页提供 Linux x64 与 Linux ARM64 的数据库 profile 程序附件。每次部署只下载匹配平台和数据库的一个程序；当前已公开 6 个 Linux profile，macOS 三个 profile 待补齐。当前 Release 附件共 8 项：6 个 Linux 程序、`SHA256SUMS` 和 `release-manifest.json`，不包含重建 SDK；macOS 三个程序补齐后再扩展清单。历史版本的附件名称和摘要不变。
 
 选择与操作系统、CPU、系统库基线和数据库匹配的附件，具体要求见[平台与验收](platforms.md)。文件名中的版本不带前缀 `v`：
 

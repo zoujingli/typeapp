@@ -13,7 +13,7 @@
 | 平台 | 当前提交的实际结果 | 当前边界 |
 | --- | --- | --- |
 | macOS ARM64 | 前端类型检查/生产构建、AOT、静态单程序、SQLite/MySQL/PostgreSQL、无源码运行及真实 TLS MQTT 通过 | 已验证范围以验收记录列出的 profile 和场景为准 |
-| Linux x64 / ARM64 | 本轮未用当前提交重跑正式矩阵 | 不能使用历史工作流或其他提交的结果替代 |
+| Linux x64 / ARM64 | 本轮 6 个静态 profile 已通过同一 tag 的单程序验收并进入 RC19 预发布附件 | 完整应用诊断和 macOS ARM64 附件仍待补齐，不能把 6 个 profile 扩展为完整九 profile 结论 |
 | Windows x64 | 本机没有 Windows runner、PowerShell、PE SDK 和 Windows 数据库 | Windows SDK、PE 构建及三库应用链路未验证 |
 
 当前发布平台/profile 矩阵仍按本页和对应 Actions 回执核对；RC19 已创建为预发布 GitHub Release，当前公开 Linux x64 与 Linux ARM64 的 6 个 profile；macOS ARM64 三个附件仍待补齐。Windows 诊断失败不改变 Linux/macOS 候选范围；历史发布版的四平台记录继续保留在下方，不能作为当前提交的通过证据。
