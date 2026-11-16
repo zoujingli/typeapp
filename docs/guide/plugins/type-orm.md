@@ -10,6 +10,8 @@ RC19 候选已完成本地 macOS ARM64 的 ORM、三库管理链路、全量 AOT
 
 第一次接入时，先选择一个驱动并运行它的参数查询示例，再按[数据库与模型](../database.md)完成表迁移、Model 声明和当前作用域装配。本页进一步解释查询、事务及失败恢复，避免把“能连接”当成业务数据闭环。
 
+完整案例入口见[ORM 可运行案例](../orm-examples.md)。它把本页每个公开能力映射到 `examples/orm-suite` 的具体文件，并提供 PHP 三库消费者、原生单程序消费者和预期结果；阅读本页后应优先运行该套件，再把片段迁移到自己的应用。
+
 ```mermaid
 flowchart TB
     Business[业务服务] --> Model[Model / ModelQuery]

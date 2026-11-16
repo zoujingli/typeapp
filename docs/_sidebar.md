@@ -25,6 +25,7 @@
   - [配置与环境](/guide/configuration.md)
   - [路由与中间件](/guide/routing.md)
   - [数据库与模型](/guide/database.md)
+  - [ORM 可运行案例](/guide/orm-examples.md)
   - [组件参考](/guide/components.md)
 - 基础通信
   - [通信导读](/guide/communications.md)
