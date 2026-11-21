@@ -156,7 +156,7 @@ sequenceDiagram
 
 组件依赖 PDO 与 runtime，应用另选一个数据库驱动。TypePHP 编译 ORM、驱动及业务 Model；单程序构建从匹配的静态 SDK 链接 PDO、数据库客户端、PHPX/libphp 与 Swoole。部署机准备对应数据库服务或 SQLite 数据目录，无需安装 PDO 扩展。共享库开发验收和静态交付分开核对，见[构建与部署](https://iots.top/next/#/guide/deployment)。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## 主仓验证入口
 

@@ -85,7 +85,7 @@ flowchart LR
 
 源码开发需要 `ext-pdo_sqlite`。发布 `sqlite` 单程序时，从匹配静态 SDK 链接 PDO SQLite、SQLite 与公共原生库；部署机无需数据库服务器。文件数据库放在独立可写本地目录，包含运行生成的 WAL/SHM，备份与持久化由应用部署管理。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## 主仓验证入口
 

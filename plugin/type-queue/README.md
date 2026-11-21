@@ -190,7 +190,7 @@ flowchart LR
 
 依赖 runtime 与 `type-redis`，不自动要求 core/ORM/cache/scheduler。消息处理器和生成 Registry 全部 AOT，Swoole、phpredis 等非系统库静态链接进主程序。部署另行提供配置了 noeviction/AOF 的可靠 Redis，工作角色由应用入口或进程管理器启动。停止通知沿用 runtime 的平台能力，在途业务及资源退出后才结束角色。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## 主仓验证入口
 

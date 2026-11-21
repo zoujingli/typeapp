@@ -126,7 +126,7 @@ flowchart TD
 
 依赖 `type-redis` 及其 runtime、phpredis 依赖和 PSR-16；声明事务组合时应用另装 ORM/build。PSR 接口、codec 和已登记对象一起 AOT，phpredis 等非系统库静态链接进主程序；缓存 Redis 服务独立提供。`unserialize` 仅能调用已编译且明确允许的类，不允许缓存载荷驱动 PHP 源码加载。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## 主仓验证入口
 

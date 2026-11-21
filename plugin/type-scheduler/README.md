@@ -193,7 +193,7 @@ flowchart LR
 
 Composer 包含 runtime、Redis、`dragonmantank/cron-expression 3.6.0` 与 PSR-20；本地文件调度不连接 Redis 服务，但开发安装仍检查 phpredis。Cron/PSR 源码按精确 imports 一起 AOT，静态 SDK 提供时区与原生库能力。部署使用文件存储时准备受信任的本地状态目录，多实例协调时准备可靠 Redis 服务；宿主负责停止通知和最终收尾。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## 主仓验证入口
 

@@ -138,7 +138,7 @@ final class TypephpCompatibility extends Translator
                 throw new \RuntimeException('线程生成适配需要重新核对 TypePHP 原文');
             }
             $extension = basename($file) === 'extension-' . $this->targetName . '.cc';
-            // TypePHP 0.9 将声明拆成多个 *_decl.h；只有运行时声明头仍带旧版标记。
+            // TypePHP v0.10.1 将声明拆成多个 *_decl.h；只有运行时声明头仍带旧版标记。
             $declarations = str_ends_with($file, '_decl.h');
             $runtimeDeclarations = str_contains($content, 'enum class RequestClassId : uint32_t {};');
             if ($runtimeDeclarations) {
@@ -252,7 +252,7 @@ CPP;
                 foreach ($storage as $name => $type) {
                     $before = ($declarations ? 'extern ' : '') . $type . ' ' . $name . ';';
                     $after = ($declarations ? 'extern ' : '') . 'THREAD_LOCAL ' . $type . ' ' . $name . ';';
-                    // TypePHP 0.9 按源文件拆分声明头；当前头文件不一定包含每个全局/类常量。
+                    // TypePHP v0.10.1 按源文件拆分声明头；当前头文件不一定包含每个全局/类常量。
                     $content = $this->threadReplace($content, $before, $after, true);
                 }
                 if ($extension) {
@@ -354,7 +354,7 @@ CPP . "\n" . $request;
 
     /**
      * 完整 embed 运行时必须通过 compileFile() 选择已审查的生命周期源码。
-     * TypePHP 0.9 的进程池直接生成编译命令，绕过了该覆写；完整 embed 构建只
+     * TypePHP v0.10.1 的进程池直接生成编译命令，绕过了该覆写；完整 embed 构建只
      * 临时关闭这层进程池，仍复用上游的源码队列、缓存、编译选项和链接流程。
      *
      * @param list<string> $sourceFiles
@@ -481,7 +481,7 @@ CPP . "\n" . $request;
     protected function buildFuncCallConfig(): array
     {
         $configuration = parent::buildFuncCallConfig();
-        // PHPX 2.9.5 的快速路径调用对象钩子后仍未检查 EG(exception)。标准 php::call 已检查
+        // PHPX 2.9.8 的快速路径调用对象钩子后仍未检查 EG(exception)。标准 php::call 已检查
         // 并传播同一异常，也正确清理序列化资源。普通函数和 universal methods 共用此映射。
         // 上游依据：swoole/phpx@13cf7175 的 include/std/json.h 与 include/std/misc.h。
         unset($configuration['json_encode'], $configuration['serialize'], $configuration['unserialize']);
@@ -883,7 +883,7 @@ CPP . "\n" . $request;
             $default = $this->genDefaultArgumentExpr($nativeName, $index);
             $getter = $argument->byRef ? 'php::getCallArgByRef' : 'php::getCallArg';
             $type = $argument->byRef ? 'php::Ref' : 'php::Var';
-            // 与 PHPX 2.9.5 的 getCallArg/getCallArgByRef 保持一致：命名参数跳位是
+            // 与 PHPX 2.9.8 的 getCallArg/getCallArgByRef 保持一致：命名参数跳位是
             // IS_UNDEF，显式 null 则是已提供的值；短路判断避免读取越界调用帧。
             $missing = $index . ' >= php::getCallArgNum() || Z_ISUNDEF_P(ZEND_CALL_ARG(EG(current_execute_data), ' . ($index + 1) . '))';
             $replacement = '((' . $missing . ') ? ' . $type . '(' . $default . ') : ' . $getter . '(' . $index . '))';

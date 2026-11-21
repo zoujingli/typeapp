@@ -92,7 +92,7 @@ Unix 使用非阻塞管道与 SIGTERM／SIGKILL。Windows 使用 NUL、临时输
 
 通常作为 PHP 开发工具执行，需满足 runtime、JSON 及传递的 Swoole 要求。测试代码留在开发环境，被测部署程序仍是一个主程序和外置配置。确需编译独立验收程序时，单独声明其生产输入并通过 `extra.type.sources` 纳入 testing；不要为此改变业务应用的 `require-dev` 边界。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## 主仓验证入口
 

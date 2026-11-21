@@ -138,7 +138,7 @@ flowchart LR
 
 生产依赖为 `type-runtime`、`psr/log ~3.0.2` 与 JSON，不要求 core 或数据库。PSR 源码按精确适配版本一起编译，Swoole 等非系统库静态链接进主程序。日志目录、输出权限及轮转属于部署配置；日志内容和真实秘密不进入构建输入。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## 主仓验证入口
 

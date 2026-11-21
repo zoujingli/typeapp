@@ -4,7 +4,7 @@
 
 单程序构建将 Swoole 及其他非系统原生运行库静态链接进主程序，启动不释放运行库。部署使用目标平台的程序和外置配置，无需另行安装 PHP、Swoole 或构建工具；页面只在显式安装时生成。外部数据库、Redis、证书与持久数据按业务需要管理，已发布版本和实际平台范围见[环境与依赖](https://iots.top/#/guide/environment)。历史目录包仍须保留原完整布局。
 
-当前主仓源码构建基线为 PHP `8.5.12 ZTS`、TypePHP 提交 `c5599c5c`、PHPX `2.9.8`，Swoole 固定为提交 `81404909` 的 6.3 开发快照（版本字符串 `6.3.0RC1`）；各平台模块升级状态见[构建输入](../resources/swoole/README.md)，本手册不扩大平台支持范围。当前迁移结果见[平台与验收](https://iots.top/#/guide/platforms)，RC14 的历史验收仍见[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。每个平台和数据库 profile 必须使用各自匹配的 SDK 和最终程序验证，不能沿用 RC13 的身份或结论。
+当前主仓源码构建基线为 PHP `8.5.12 ZTS`、TypePHP `v0.10.1` 提交 `c5599c5c`、PHPX `2.9.8`，Swoole 固定为提交 `81404909` 的 6.3 开发快照（版本字符串 `6.3.0RC1`）。官方 Swoole 稳定版为 6.2.6，6.3.0-rc2 仍为预发布版本，当前快照待完成适配重放、模块重建和原生矩阵后再同步；各平台模块升级状态见[构建输入](../resources/swoole/README.md)，本手册不扩大平台支持范围。当前迁移结果见[平台与验收](https://iots.top/#/guide/platforms)，RC14 的历史验收仍见[历史记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.4.md)。每个平台和数据库 profile 必须使用各自匹配的 SDK 和最终程序验证，不能沿用 RC13 的身份或结论。
 
 ## 1. 固定部署对象
 

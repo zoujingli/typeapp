@@ -49,7 +49,7 @@
             {
               "source": "src/Cron/CronExpression.php",
               "sha256": "d257d01d5f331236e20854c4b0bb611e8dbcc41d9f2c09fa1398a30e00027ca2",
-              "reason": "区分表达式文本与对象，并按TypePHP 0.9显式传递动态日期引用，保持日期合并、克隆和写回语义。",
+              "reason": "区分表达式文本与对象，并按TypePHP 0.10.1显式传递动态日期引用，保持日期合并、克隆和写回语义。",
               "replacements": [
                 {
                   "from": "$domExpression = sprintf(",
@@ -86,7 +86,7 @@
             {
               "source": "src/Cron/FieldInterface.php",
               "sha256": "158a32eded9733c46b9eb36dc61280aa5dfbd03cf7882ed4f6cd9aabdafca79a",
-              "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.9的引用存储边界。",
+              "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.10.1的引用存储边界。",
               "replacements": [
                 {
                   "from": "DateTimeInterface &$date",
@@ -98,7 +98,7 @@
             {
               "source": "src/Cron/DayOfMonthField.php",
               "sha256": "b69d63d2a2890106c1bc544f31cb8df097012018bfb845f97b4d23ca3df538eb",
-              "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.9的引用存储边界。",
+              "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.10.1的引用存储边界。",
               "replacements": [
                 {
                   "from": "DateTimeInterface &$date",
@@ -110,7 +110,7 @@
             {
               "source": "src/Cron/DayOfWeekField.php",
               "sha256": "e10b47a3189aeec98681f699b8ecf2ea216e8f7b87f3aab8ed92618f06fd2f79",
-              "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.9的引用存储边界。",
+              "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.10.1的引用存储边界。",
               "replacements": [
                 {
                   "from": "DateTimeInterface &$date",
@@ -122,7 +122,7 @@
             {
               "source": "src/Cron/HoursField.php",
               "sha256": "8e4693f16203ceea8aad5d322b9add6a1682c2dd4f3d640700832a4612c00e81",
-              "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.9的引用存储边界。",
+              "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.10.1的引用存储边界。",
               "replacements": [
                 {
                   "from": "DateTimeInterface &$date",
@@ -134,7 +134,7 @@
             {
               "source": "src/Cron/MinutesField.php",
               "sha256": "bc18b0bb62c77105583e1e09526fb20a57fcc3e2557619faeb2dc3325c4d0bb9",
-              "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.9的引用存储边界。",
+              "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.10.1的引用存储边界。",
               "replacements": [
                 {
                   "from": "DateTimeInterface &$date",
@@ -146,7 +146,7 @@
             {
               "source": "src/Cron/MonthField.php",
               "sha256": "96ef40989010fba773e494f35e378894a18a9e08def04508995328aa74c49b49",
-              "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.9的引用存储边界。",
+              "reason": "PHP的DateTimeInterface仅由DateTime和DateTimeImmutable及其子类实现；等价联合类型保留对象引用写回，同时满足TypePHP 0.10.1的引用存储边界。",
               "replacements": [
                 {
                   "from": "DateTimeInterface &$date",

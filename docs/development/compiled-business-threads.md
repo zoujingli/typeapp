@@ -10,11 +10,11 @@
 
 ## 锁定 TypePHP 编译接入
 
-当前线程编译基线为 PHP `8.5.12 ZTS`、TypePHP 提交 `c5599c5c`、PHPX `2.9.8`。TypePHP 0.9 的进程池会直接生成编译命令，绕过适配器的 `compileFile()`；`TypephpCompatibility::compile()` 仅在线程二进制构建中临时将上游 `maxJob` 设为 1，调用父类编译流程后恢复原值。因此源码队列、对象缓存、编译选项和链接仍由 TypePHP 负责，没有另建并行编译器或运行时调度器。
+当前线程编译基线为 PHP `8.5.12 ZTS`、TypePHP `v0.10.1` 提交 `c5599c5c`、PHPX `2.9.8`。TypePHP 的进程池会直接生成编译命令，绕过适配器的 `compileFile()`；`TypephpCompatibility::compile()` 仅在线程二进制构建中临时将上游 `maxJob` 设为 1，调用父类编译流程后恢复原值。因此源码队列、对象缓存、编译选项和链接仍由 TypePHP 负责，没有另建并行编译器或运行时调度器。
 
-TypePHP 0.9 将声明拆分为多个 `*_decl.h`。写文件适配现在只把线程辅助代码注入运行时公共声明头，按当前头文件是否包含符号决定是否跳过；实际存在的变量仍必须唯一替换为线程局部存储。PHPX runtime 通过真实路径匹配后替换为 `plugin/type-build/src/Native/thread-runtime.cc`，避免同名或缓存路径误替换。
+TypePHP 将声明拆分为多个 `*_decl.h`。写文件适配现在只把线程辅助代码注入运行时公共声明头，按当前头文件是否包含符号决定是否跳过；实际存在的变量仍必须唯一替换为线程局部存储。PHPX runtime 通过真实路径匹配后替换为 `plugin/type-build/src/Native/thread-runtime.cc`，避免同名或缓存路径误替换。
 
-0.9.5 的 `CompilerRuntime` 显式标记为源码入口，确保增量生成指纹包含实际编译器源码。新版 runtime 启动函数增加 `pre_shutdown` 参数；本仓完整 embed 应用在 `php_module_startup` 前注册为持久模块，由生成的 MSHUTDOWN 回收枚举 AST 常量，不重复调用上游临时模块路径的清理回调。普通应用也复用该宿主，详见[请求与模块生命周期](../standards/typephp.md#embed-请求与模块生命周期)；线程消费者继续单独检查枚举 case 类常量、继承和多次请求重建。
+当前 `CompilerRuntime` 显式标记为源码入口，确保增量生成指纹包含实际编译器源码。当前 runtime 启动函数增加 `pre_shutdown` 参数；本仓完整 embed 应用在 `php_module_startup` 前注册为持久模块，由生成的 MSHUTDOWN 回收枚举 AST 常量，不重复调用上游临时模块路径的清理回调。普通应用也复用该宿主，详见[请求与模块生命周期](../standards/typephp.md#embed-请求与模块生命周期)；线程消费者继续单独检查枚举 case 类常量、继承和多次请求重建。
 
 ## 运行时基础能力
 
@@ -86,7 +86,7 @@ $status = $thread->getExitStatus();
 
 ## 受控工具链
 
-基础版本为工具链锁中的 PHP 8.5.12 ZTS、TypePHP 固定开发快照（0.9.6）与 PHPX 2.9.8。额外适配只写显式的独立源码副本，先核对原文件 SHA-256 和替换次数，不修改已安装的共享 vendor 或 SDK。
+基础版本为工具链锁中的 PHP 8.5.12 ZTS、TypePHP `v0.10.1` 与 PHPX 2.9.8。额外适配只写显式的独立源码副本，先核对原文件 SHA-256 和替换次数，不修改已安装的共享 vendor 或 SDK。
 
 - `Type\Build\SwooleThreadSource::apply($directory)` 接受 Swoole 源码 `814049090dd9ba8000adc6cd09ad09dd3f0c9989`，增加 `Thread::startNative` 与 `NATIVE_ENTRY_ABI=2`。这是 RC1 后的开发快照，实际报告 **6.3.0RC1**。中断钩子在进程模块初始化/关闭时安装/恢复，线程不相互覆盖；关闭回调使用其自身的有效 bailout 边界。标准流 FD 副本的注册和请求关闭回收已由上游承担，项目不再重复维护所有权标记及 RSHUTDOWN 处理；原生入口同时登记上游的已构造状态，拒绝二次构造。当前构建使用 `swoole.enable_library=On` 和 `swoole.enable_fiber_mock=On`；旧模块必须重建，不能只凭 ABI 2 继续复用。
 - `Type\Build\PhpxThreadSource::apply($directory)` 接受锁定 PHPX 2.9.8 源码，按线程和协程隔离调试与权限状态，保护 Native finalizer 的堆清理边界。持久字符串直接复用上游 interned 存储，项目已删除重复补丁；`String::offsetSet()` 和 `Variant::setByteOfStr()` 使用 `zend_string_separate()` 取得可写副本，不能使用只按引用计数判断的 `SEPARATE_STRING`。重新编译整份 PHPX；ABI 2、头文件、核心、debug、GC 及字符串源码摘要共同防止混用旧适配。

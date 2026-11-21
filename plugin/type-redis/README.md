@@ -114,7 +114,7 @@ sequenceDiagram
 
 源码开发需要 phpredis `^6.3`，Composer 自动解析 runtime；单程序构建将所选 Redis 扩展及 TLS 等非系统库静态链接，Redis 服务由部署者提供。固定关闭持久连接与隐式写入重试是协议的一部分。单机 Redis、认证与 TLS 的实际版本和证据见相应记录，不扩大为 Cluster/Sentinel 兼容。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## 主仓验证入口
 

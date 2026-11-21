@@ -154,9 +154,9 @@ vendor/bin/type --inspect build/type-example
 
 ## AOT 与运行要求
 
-本包应放在 `require-dev`，其 PHP-Parser、Composer 与 TypePHP 编译器在构建阶段运行；不是生产服务的一部分。当前锁定 TypePHP 固定开发快照（c5599c5c）、PHPX 2.9.8 和 PHP 8.5.12 ZTS；构建须提供匹配目标平台的完整 SDK。各平台的隔离强度、已发布版本和新版验收进度统一见[平台与验收](https://iots.top/#/guide/platforms)。生产运行库由实际产物清单确定，不把编译 SDK、源码或构建秘密复制进运行镜像。
+本包应放在 `require-dev`，其 PHP-Parser、Composer 与 TypePHP 编译器在构建阶段运行；不是生产服务的一部分。当前锁定 TypePHP v0.10.1（c5599c5c）、PHPX 2.9.8 和 PHP 8.5.12 ZTS；构建须提供匹配目标平台的完整 SDK。各平台的隔离强度、已发布版本和新版验收进度统一见[平台与验收](https://iots.top/#/guide/platforms)。生产运行库由实际产物清单确定，不把编译 SDK、源码或构建秘密复制进运行镜像。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。标量存储、引用及std编译期接口按新版规则实现，带上下文的闭包必须完整声明参数；PHP开发对照只使用具有真实等价行为的能力。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。标量存储、引用及std编译期接口按新版规则实现，带上下文的闭包必须完整声明参数；PHP开发对照只使用具有真实等价行为的能力。
 
 构建入口直接复用 当前锁定 TypePHP 对嵌套 `new` 默认值的临时作用域处理；项目继续适配 Zend 包装入口，使默认值仅在参数缺失时求值。显式实参和 `null` 不触发默认构造，省略参数则逐次创建对象。适配绑定已审查的上游源码摘要，不修改应用、共享 SDK 或已安装的编译器源码；它不表示所有 PHP 默认值上下文均已兼容，边界与撤除条件见上述语法基线。
 

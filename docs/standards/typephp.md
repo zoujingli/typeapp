@@ -1,19 +1,19 @@
-# TypePHP 0.9 语法与实现基线
+# TypePHP 0.10.1 语法与实现基线
 
 本文是当前 TypeApp 构建入口的版本基线。生产代码、生成代码和实际安装的生产依赖均按锁文件交给 TypePHP AOT 编译；PHP 脚本测试只证明开发路径行为，不能替代原生编译和无源码运行验收。
 
 ## 锁定身份
 
-- TypePHP：`dev-master`，提交 `c5599c5c9e8597e7124dd79db94739cabe39c526`，开发主线固定提交
+- TypePHP：`v0.10.1`，提交 `c5599c5c9e8597e7124dd79db94739cabe39c526`，Composer 以固定提交安装
 - PHPX：`v2.9.8`，提交 `90e6d22a9c3f4d5dbd2c75d62e90bf5adfe58c89`
 - Swoole：源码适配固定开发快照 `814049090dd9ba8000adc6cd09ad09dd3f0c9989`，运行时字符串 `6.3.0RC1`
 - PHP：`8.5.12 ZTS`（目标平台 SDK 必须与实际 PHP、架构和线程模式一致）
 
 以上是当前开发候选的源码与工具链身份。仓库附带的历史 Swoole 共享模块仍使用 PHP 8.5.12 和旧适配清单，不能作为本候选的验证证据；选择门禁会拒绝不匹配的模块。新组合的完整 AOT、无源码运行与正式平台/profile 矩阵须重新验收，固定版本不表示兼容性已经通过。下文的历史缺口与适配撤除条件仍需按新上游逐项复核。
 
-PHP、TypePHP 与 PHPX 的准确依赖以根 `composer.lock` 和 `toolchain.lock.json` 为准；模板也必须携带相同的工具链身份。Swoole 源码适配提交由 `SwooleThreadSource::REFERENCE` 固定，逐平台模块身份记录在[内置清单](../../plugin/type-build/resources/swoole/manifest.json)，重建状态见[构建输入](../../plugin/type-build/resources/swoole/README.md)。上面的 Swoole 提交是 RC1 后的开发快照，不能称为正式 6.3.0；官方稳定线 6.2.5 与当前 6.3 快照分叉，不能在没有重新适配、重建和完整验收的情况下替换它。
+PHP、TypePHP 与 PHPX 的准确依赖以根 `composer.lock` 和 `toolchain.lock.json` 为准；模板也必须携带相同的工具链身份。Swoole 源码适配提交由 `SwooleThreadSource::REFERENCE` 固定，逐平台模块身份记录在[内置清单](../../plugin/type-build/resources/swoole/manifest.json)，重建状态见[构建输入](../../plugin/type-build/resources/swoole/README.md)。上面的 Swoole 提交是 RC1 后的开发快照，不能称为正式 6.3.0；官方稳定线已更新到 6.2.6，6.3.0-rc2 仍是预发布版本。没有重新适配、重建和完整验收前，不能替换当前快照。
 
-当前采用上述 TypePHP 开发快照与 PHPX 2.9.8。根项目使用 `composer install` 安装锁文件中的精确提交；模板和无锁文件的独立消费者使用 `dev-master#完整提交`。构建入口再次校验工具链锁和源码摘要，拒绝未经适配的分支漂移。根清单不重复声明 commit-ref；声明、锁文件与实际原生产物分别核对。
+当前采用上述 TypePHP v0.10.1 正式提交与 PHPX 2.9.8。根项目使用 `composer install` 安装锁文件中的精确提交；模板和无锁文件的独立消费者使用 `dev-master#完整提交`。构建入口再次校验工具链锁和源码摘要，拒绝未经适配的分支漂移。根清单不重复声明 commit-ref；声明、锁文件与实际原生产物分别核对。
 
 当前锁定 TypePHP 的匿名类会回退到嵌入 opcode 或 `eval`，本仓构建入口明确拒绝该路径；生产实现使用具名类。静态 PHP embed 构建与源码是否全量 AOT 是两项独立检查，不能以嵌入业务字节码替代编译。Nano 的能力边界不覆盖当前应用的 Swoole、数据库及任务系统，本次不采用。
 

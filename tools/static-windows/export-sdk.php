@@ -133,7 +133,7 @@ $notices = ['typeapp-static.lib' => ['component' => $redisEnabled ? 'PHP、Swool
 $phpxLicense = exportSdkFile($phpx . '/LICENSE', $sdk, 'licenses/phpx/LICENSE');
 $gcLicense = exportSdkFile($phpx . '/thirdparty/wren-gc/LICENSE', $sdk, 'licenses/phpx/wren-gc/LICENSE');
 $decimalLicense = exportSdkFile($phpx . '/thirdparty/mpdecimal/COPYRIGHT.txt', $sdk, 'licenses/phpx/mpdecimal/COPYRIGHT.txt');
-$notices['phpx.lib'] = ['component' => 'PHPX、wren-gc', 'version' => 'PHPX 2.9.5',
+$notices['phpx.lib'] = ['component' => 'PHPX、wren-gc', 'version' => 'PHPX 2.9.8',
     'license' => ['Apache-2.0', 'MIT'], 'files' => [$phpxLicense, $gcLicense]];
 foreach (['libmpdec-4.0.1.lib', 'libmpdec++-4.0.1.lib'] as $name) {
     $notices[$name] = ['component' => 'mpdecimal', 'version' => '4.0.1', 'license' => 'BSD-2-Clause', 'files' => [$decimalLicense]];

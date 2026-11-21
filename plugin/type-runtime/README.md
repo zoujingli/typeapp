@@ -132,7 +132,7 @@ function main(int $argc, array $argv): void
 
 参数和作用域辅助接口可以独立使用；HTTP、数据库和 Redis 组件按业务安装。源码开发需满足 Composer 的 `ext-filter` 与 `ext-swoole >=6.2 <7`；业务线程还需要上文的受控 ABI 与完整编译入口。单程序构建将 PHPX、libphp、Swoole 等非系统运行库静态链接，部署机无需逐个安装扩展；系统与服务要求见[环境与依赖](https://iots.top/next/#/guide/environment)。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## 主仓验证入口
 

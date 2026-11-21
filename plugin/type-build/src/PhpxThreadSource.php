@@ -46,7 +46,7 @@ final class PhpxThreadSource
             'extern DebugInfo debug_info;',
             "extern THREAD_LOCAL DebugInfo debug_info;\nPHPX_API int typeAppThreadAbi();\nPHPX_API bool typeAppRunFinalizer(void (*finalizer)(void *), void *object);"
         );
-        // PHPX 2.9.5 已将共享持久字符串改为 interned 常量；保留项目的可写副本适配。
+        // PHPX 2.9.8 已将共享持久字符串改为 interned 常量；保留项目的可写副本适配。
         $contents['include/phpx.h'] = $this->replace(
             $contents['include/phpx.h'],
             '        SEPARATE_STRING(zv());',

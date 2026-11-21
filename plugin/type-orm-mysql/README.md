@@ -120,7 +120,7 @@ flowchart LR
 
 当 SDK 把 mysqlnd 作为共享模块提供时，在构建配置当前平台的 `runtime.extensions` 中声明 `mysqlnd`，真实 embed 探针会将它和 `pdo_mysql` 一起加载并记录摘要。独立消费者测试按实际 SDK 的 mysqlnd 能力生成这一声明；使用其他客户端库的 SDK 不添加此模块。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## 主仓验证入口
 

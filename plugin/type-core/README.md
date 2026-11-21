@@ -122,7 +122,7 @@ function main(): void
 
 连接池和日志可通过 `SwooleServer(..., onWorkerStop: $cleanup)` 注册零参数关闭回调。Unix `serve()` 在实际 worker 的同步停止阶段调用；Windows `serve()` 在协程 HTTP 事件循环退出后调用，没有独立 worker 进程。回调关闭当前宿主持有的长期资源，不再启动异步工作；调用者自己的资源仍在 `finally` 关闭。强制终止或关闭控制台窗口不能保证执行清理。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## WebSocket
 

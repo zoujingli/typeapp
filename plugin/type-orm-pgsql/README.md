@@ -100,7 +100,7 @@ flowchart LR
 
 源码开发需要 `ext-pdo_pgsql`，不要求 MySQL、SQLite 或 core。发布 `pgsql` 单程序时，从匹配静态 SDK 链接 PDO PostgreSQL、libpq 及其非系统依赖；部署机准备 PostgreSQL 服务与连接配置，TLS 按需提供受信任的外部 CA。服务器基线不意味着所有 PostgreSQL 兼容产品已验收。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## 主仓验证入口
 

@@ -70,7 +70,7 @@ HTTP、TCP、UDP、MQTT、WebSocket 的教程和接口平级，验收按协议�
 
 开发环境需要 PHP `>=8.4 <8.6`、Composer、Swoole `>=6.2 <7` 和所选 PDO 驱动；原生构建还需要匹配目标 OS/架构的 PHP ZTS/embed SDK、PHPX 和编译工具。Linux/macOS 使用对应原生工具链，Windows x64 使用匹配的 ZTS SDK 与 MSVC；准备入口见 GitHub 上的[原生命令与 SDK](https://github.com/zoujingli/typeapp/blob/main/docs/development/native-command.md)。
 
-当前源码的原生构建基线为 PHP 8.5.12 ZTS、当前锁定 TypePHP 主线提交、PHPX 2.9.8，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 固定为 `81404909` 开发快照，运行时报告 `6.3.0RC1`，不是正式 6.3.0；源码、构建开关、模块摘要和官方内置库配置分别记录。模块升级状态见[构建输入](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。CLI 加载成功还需要对应 embed 环境验证，不能只复制一个扩展文件就认定 ABI 匹配。
+当前源码的原生构建基线为 PHP 8.5.12 ZTS、TypePHP `v0.10.1` 提交 c5599c5c、PHPX 2.9.8，准确引用以项目的工具链锁和 Composer 锁文件为准。Swoole 固定为 `81404909` 开发快照，运行时报告 `6.3.0RC1`，不是正式 6.3.0。官方稳定版已到 6.2.6，6.3.0-rc2 仍为预发布版本，当前快照待完成适配重放、模块重建和原生矩阵后再同步；源码、构建开关、模块摘要和官方内置库配置分别记录。模块升级状态见[构建输入](https://github.com/zoujingli/typeapp/blob/main/plugin/type-build/resources/swoole/README.md)。CLI 加载成功还需要对应 embed 环境验证，不能只复制一个扩展文件就认定 ABI 匹配。
 
 此前 0.9.5 / 2.9.4 的早期 macOS ARM64 完整应用、三库和独立线程结果见[工具链升级验收](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/typephp-upgrade-0.9.5.md)。较早的双端物联架构候选 `3818a30` 已有 11 个平台/profile 组合的静态工作流成功，但其 Windows PostgreSQL 复验在测试备库启动时发生文件访问拒绝；该候选的完整矩阵未结项，不代表当前 `main` 的平台状态。Linux x64 SQLite 候选已更新到只读 Demo；逐项结果见[开发候选与现场记录](https://github.com/zoujingli/typeapp/blob/main/docs/evidence/iot-redesign-20261024.md)，不改变上表 RC14 的公开发布范围。
 

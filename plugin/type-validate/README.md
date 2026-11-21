@@ -89,7 +89,7 @@ flowchart LR
 
 独立安装依赖 `type-runtime`，因此开发 PHP 需满足其 Swoole 要求；纯字段校验不需要创建协程，也无需 PDO 或 Redis 服务。Schema、DTO 和业务闭包一起 AOT，所需非系统运行库静态链接。校验只是输入边界，权限、唯一约束及持久化仍由应用负责。
 
-语言与整体编译约定见[TypePHP 0.9 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
+语言与整体编译约定见[TypePHP 0.10.1 基线](https://github.com/zoujingli/typeapp/blob/main/docs/standards/typephp.md)。文中的声明式示例不使用省略实参的回调兼容层；带上下文的闭包必须完整声明参数。
 
 ## 主仓验证入口
 
